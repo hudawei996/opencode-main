@@ -47,6 +47,7 @@ import type { TuiThemeCurrent } from "@opencode-ai/plugin/tui"
 
 type Theme = TuiThemeCurrent & {
   _hasSelectedListItemText: boolean
+  transparent: boolean
 }
 type ThemeColor = Exclude<keyof TuiThemeCurrent, "thinkingOpacity">
 
@@ -115,8 +116,8 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   solarized,
   synthwave84,
   tokyonight,
-  vesper,
   vercel,
+  vesper,
   zenburn,
   carbonfox,
 }
@@ -126,6 +127,7 @@ type State = {
   mode: "dark" | "light"
   lock: "dark" | "light" | undefined
   active: string
+  transparent: boolean
   ready: boolean
 }
 
@@ -156,6 +158,7 @@ const [store, setStore] = createStore<State>({
   mode: "dark",
   lock: undefined,
   active: "opencode",
+  transparent: false,
   ready: false,
 })
 
@@ -195,7 +198,7 @@ export function upsertTheme(name: string, theme: unknown) {
   return true
 }
 
-export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
+export function resolveTheme(theme: ThemeJson, mode: "dark" | "light", transparent: boolean = false) {
   const defs = theme.defs ?? {}
   function resolveColor(c: ColorValue, chain: string[] = []): RGBA {
     if (c instanceof RGBA) return c
@@ -248,10 +251,17 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
   // Handle thinkingOpacity - optional with default of 0.6
   const thinkingOpacity = theme.theme.thinkingOpacity ?? 0.6
 
+  if (transparent) {
+    resolved.background = RGBA.fromInts(0, 0, 0, 0)
+    // NOTE: Could alternatively apply an alpha channel to the theme's base background color
+    // instead of forcing full transparency, allowing for adjustable opacity levels
+  }
+
   return {
     ...resolved,
     _hasSelectedListItemText: hasSelectedListItemText,
     thinkingOpacity,
+    transparent,
   } as Theme
 }
 
@@ -319,6 +329,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
         draft.lock = lock
         const active = config.theme ?? kv.get("theme", "opencode")
         draft.active = typeof active === "string" ? active : "opencode"
+        draft.transparent = kv.get("theme_transparent", false)
         draft.ready = false
       }),
     )
@@ -412,15 +423,15 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
 
     const values = createMemo(() => {
       const active = store.themes[store.active]
-      if (active) return resolveTheme(active, store.mode)
+      if (active) return resolveTheme(active, store.mode, store.transparent)
 
       const saved = kv.get("theme")
       if (typeof saved === "string") {
         const theme = store.themes[saved]
-        if (theme) return resolveTheme(theme, store.mode)
+        if (theme) return resolveTheme(theme, store.mode, store.transparent)
       }
 
-      return resolveTheme(store.themes.opencode, store.mode)
+      return resolveTheme(store.themes.opencode, store.mode, store.transparent)
     })
 
     createEffect(() => {
@@ -468,6 +479,13 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
         setStore("active", theme)
         kv.set("theme", theme)
         return true
+      },
+      transparent() {
+        return store.transparent
+      },
+      setTransparent(transparent: boolean) {
+        setStore("transparent", transparent)
+        kv.set("theme_transparent", transparent)
       },
       get ready() {
         return store.ready

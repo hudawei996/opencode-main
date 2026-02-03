@@ -259,7 +259,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const sdk = useSDK()
   const toast = useToast()
   const themeState = useTheme()
-  const { theme, mode, setMode, locked, lock, unlock } = themeState
+  const { theme, mode, setMode, locked, lock, unlock, transparent, setTransparent } = themeState
   const sync = useSync()
   const exit = useExit()
   const promptRef = usePromptRef()
@@ -662,6 +662,15 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       onSelect: (dialog) => {
         if (locked()) unlock()
         else lock()
+        dialog.clear()
+      },
+      category: "System",
+    },
+    {
+      title: transparent() ? "Disable transparency" : "Enable transparency",
+      value: "theme.transparency",
+      onSelect: (dialog) => {
+        setTransparent(!transparent())
         dialog.clear()
       },
       category: "System",
