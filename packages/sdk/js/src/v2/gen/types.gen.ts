@@ -823,6 +823,7 @@ export type Session = {
   }
   title: string
   version: string
+  cost?: number
   time: {
     created: number
     updated: number
@@ -1691,6 +1692,7 @@ export type GlobalSession = {
   }
   title: string
   version: string
+  cost?: number
   time: {
     created: number
     updated: number

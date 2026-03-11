@@ -73,6 +73,7 @@ export namespace Session {
       share,
       revert,
       permission: row.permission ?? undefined,
+      cost: row.cost ?? undefined,
       time: {
         created: row.time_created,
         updated: row.time_updated,
@@ -99,6 +100,7 @@ export namespace Session {
       summary_diffs: info.summary?.diffs,
       revert: info.revert ?? null,
       permission: info.permission,
+      cost: info.cost,
       time_created: info.time.created,
       time_updated: info.time.updated,
       time_compacting: info.time.compacting,
@@ -139,6 +141,7 @@ export namespace Session {
         .optional(),
       title: z.string(),
       version: z.string(),
+      cost: z.number().optional(),
       time: z.object({
         created: z.number(),
         updated: z.number(),
@@ -308,6 +311,7 @@ export namespace Session {
       workspaceID: input.workspaceID,
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
+      cost: 0,
       permission: input.permission,
       time: {
         created: Date.now(),
@@ -345,6 +349,13 @@ export namespace Session {
     const row = Database.use((db) => db.select().from(SessionTable).where(eq(SessionTable.id, id)).get())
     if (!row) throw new NotFoundError({ message: `Session not found: ${id}` })
     return fromRow(row)
+  })
+
+  export const getCost = fn(Identifier.schema("session"), async (id) => {
+    const row = Database.use((db) =>
+      db.select({ cost: SessionTable.cost }).from(SessionTable).where(eq(SessionTable.id, id)).get(),
+    )
+    return row?.cost
   })
 
   export const share = fn(Identifier.schema("session"), async (id) => {
@@ -509,6 +520,22 @@ export namespace Session {
       })
     },
   )
+
+  export function addCost(sessionID: string, amount: number) {
+    if (amount === 0) return
+    Database.effect(() => {
+      const row = Database.use((db) =>
+        db.select({ cost: SessionTable.cost }).from(SessionTable).where(eq(SessionTable.id, sessionID)).get(),
+      )
+      Database.use((db) =>
+        db
+          .update(SessionTable)
+          .set({ cost: (row?.cost ?? 0) + amount })
+          .where(eq(SessionTable.id, sessionID))
+          .run(),
+      )
+    })
+  }
 
   export const diff = fn(Identifier.schema("session"), async (sessionID) => {
     try {
