@@ -105,24 +105,47 @@ export namespace LSP {
           delete servers[name]
           continue
         }
-        servers[name] = {
-          ...existing,
-          id: name,
-          root: existing?.root ?? (async () => Instance.directory),
-          extensions: item.extensions ?? existing?.extensions ?? [],
-          spawn: async (root) => {
-            return {
-              process: spawn(item.command[0], item.command.slice(1), {
-                cwd: root,
-                windowsHide: true,
-                env: {
-                  ...process.env,
-                  ...item.env,
+        if ("command" in item) {
+          // Full override: user provides their own command
+          servers[name] = {
+            ...existing,
+            id: name,
+            root: existing?.root ?? (async () => Instance.directory),
+            extensions: item.extensions ?? existing?.extensions ?? [],
+            spawn: async (root) => {
+              return {
+                process: spawn(item.command[0], item.command.slice(1), {
+                  cwd: root,
+                  windowsHide: true,
+                  env: {
+                    ...process.env,
+                    ...item.env,
+                  },
+                }),
+                initialization: item.initialization,
+              }
+            },
+          }
+        } else if (item.initialization && existing) {
+          // Initialization-only override for a built-in server
+          const original = existing.spawn
+          const fallback = item.initialization
+          servers[name] = {
+            ...existing,
+            spawn: async (root) => {
+              const handle = await original(root)
+              if (!handle) return handle
+              // If the built-in server signaled it has its own project config, don't override
+              if (handle.configured) return handle
+              return {
+                ...handle,
+                initialization: {
+                  ...handle.initialization,
+                  ...fallback,
                 },
-              }),
-              initialization: item.initialization,
-            }
-          },
+              }
+            },
+          }
         }
       }
 
@@ -130,6 +153,11 @@ export namespace LSP {
         serverIds: Object.values(servers)
           .map((server) => server.id)
           .join(", "),
+      })
+
+      // Re-publish client messages as LSP.Updated so the TUI sidebar refreshes
+      Bus.subscribe(LSPClient.Event.Message, () => {
+        Bus.publish(Event.Updated, {})
       })
 
       return {
@@ -148,12 +176,19 @@ export namespace LSP {
     return state()
   }
 
+  export const ServerMessage = z.object({
+    type: z.number(),
+    message: z.string(),
+  })
+  export type ServerMessage = z.infer<typeof ServerMessage>
+
   export const Status = z
     .object({
       id: z.string(),
       name: z.string(),
       root: z.string(),
-      status: z.union([z.literal("connected"), z.literal("error")]),
+      status: z.union([z.literal("connected"), z.literal("warning"), z.literal("error")]),
+      messages: z.array(ServerMessage).optional(),
     })
     .meta({
       ref: "LSPStatus",
@@ -164,11 +199,15 @@ export namespace LSP {
     return state().then((x) => {
       const result: Status[] = []
       for (const client of x.clients) {
+        const msgs = client.messages
+        const errors = msgs.some((m) => m.type === 1)
+        const warnings = msgs.some((m) => m.type === 2)
         result.push({
           id: client.serverID,
           name: x.servers[client.serverID].id,
           root: path.relative(Instance.directory, client.root),
-          status: "connected",
+          status: errors ? "error" : warnings ? "warning" : "connected",
+          messages: msgs.length > 0 ? msgs : undefined,
         })
       }
       return result

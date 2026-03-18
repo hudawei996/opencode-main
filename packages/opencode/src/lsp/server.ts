@@ -31,7 +31,14 @@ export namespace LSPServer {
 
   export interface Handle {
     process: ChildProcessWithoutNullStreams
+    /** Sent as initializationOptions in the initialize request and via didChangeConfiguration */
     initialization?: Record<string, any>
+    /** Returned in workspace/configuration responses. Kept separate from initialization
+     *  because some servers (e.g. Biome) read config only from workspace/configuration
+     *  and get confused if the same data appears in initializationOptions. */
+    settings?: Record<string, any>
+    /** When true, the project has its own config file — don't apply fallback initialization */
+    configured?: boolean
   }
 
   type RootFunction = (file: string) => Promise<string | undefined>
@@ -361,8 +368,31 @@ export namespace LSPServer {
         },
       })
 
+      const configured =
+        (await Filesystem.exists(path.join(root, "biome.json"))) ||
+        (await Filesystem.exists(path.join(root, "biome.jsonc")))
+
       return {
         process: proc,
+        configured,
+        settings: configured
+          ? undefined
+          : {
+              inlineConfig: {
+                linter: {
+                  rules: {
+                    suspicious: {
+                      useIterableCallbackReturn: {
+                        level: "error",
+                        options: {
+                          checkForEach: false,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
       }
     },
   }
