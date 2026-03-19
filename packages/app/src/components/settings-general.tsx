@@ -249,6 +249,18 @@ export const SettingsGeneral: Component = () => {
             triggerStyle={{ "min-width": "180px" }}
           />
         </SettingsRow>
+
+        <SettingsRow
+          title={language.t("settings.general.row.historyArrows.title")}
+          description={language.t("settings.general.row.historyArrows.description")}
+        >
+          <div data-action="settings-history-arrows">
+            <Switch
+              checked={settings.general.historyArrows()}
+              onChange={(checked) => settings.general.setHistoryArrows(checked)}
+            />
+          </div>
+        </SettingsRow>
       </SettingsList>
     </div>
   )
