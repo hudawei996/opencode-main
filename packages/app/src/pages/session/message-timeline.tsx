@@ -237,17 +237,17 @@ export function MessageTimeline(props: {
     if (!id) return emptyMessages
     return sync.data.message[id] ?? emptyMessages
   })
-  const pending = createMemo(() =>
-    sessionMessages().findLast(
-      (item): item is AssistantMessage => item.role === "assistant" && typeof item.time.completed !== "number",
-    ),
-  )
+  const assistant = createMemo(() => {
+    const item = sessionMessages().findLast((item): item is AssistantMessage => item.role === "assistant")
+    if (!item || typeof item.time.completed === "number") return
+    return item
+  })
   const sessionStatus = createMemo(() => {
     const id = sessionID()
     if (!id) return idle
     return sync.data.session_status[id] ?? idle
   })
-  const working = createMemo(() => !!pending() || sessionStatus().type !== "idle")
+  const busy = createMemo(() => sessionStatus().type !== "idle")
   const tint = createMemo(() => messageAgentColor(sessionMessages(), sync.data.agent))
 
   const [slot, setSlot] = createStore({
@@ -265,7 +265,7 @@ export function MessageTimeline(props: {
   onCleanup(clear)
   createEffect(
     on(
-      working,
+      busy,
       (on, prev) => {
         clear()
         if (on) {
@@ -283,7 +283,9 @@ export function MessageTimeline(props: {
     ),
   )
   const activeMessageID = createMemo(() => {
-    const parentID = pending()?.parentID
+    if (!busy()) return undefined
+
+    const parentID = assistant()?.parentID
     if (parentID) {
       const messages = sessionMessages()
       const result = Binary.search(messages, parentID, (message) => message.id)
@@ -291,15 +293,10 @@ export function MessageTimeline(props: {
       if (message && message.role === "user") return message.id
     }
 
-    const status = sessionStatus()
-    if (status.type !== "idle") {
-      const messages = sessionMessages()
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === "user") return messages[i].id
-      }
+    const messages = sessionMessages()
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") return messages[i].id
     }
-
-    return undefined
   })
   const info = createMemo(() => {
     const id = sessionID()
