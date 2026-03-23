@@ -57,10 +57,7 @@ import { setSessionHandoff } from "@/pages/session/handoff"
 
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
-import { DialogSelectProvider } from "@/components/dialog-select-provider"
-import { DialogSelectServer } from "@/components/dialog-select-server"
-import { DialogSettings } from "@/components/dialog-settings"
-import { useCommand, type CommandOption } from "@/context/command"
+import { useCommand } from "@/context/command"
 import { ConstrainDragXAxis, getDraggableId } from "@/utils/solid-dnd"
 import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { DialogEditProject } from "@/components/dialog-edit-project"
@@ -76,6 +73,8 @@ import {
   sortedRootSessions,
   workspaceKey,
 } from "./layout/helpers"
+import { showProviderDialog, showSettingsDialog } from "@/components/dialog-actions"
+import { registerLayoutCommands } from "./layout/commands"
 import {
   collectNewSessionDeepLinks,
   collectOpenProjectDeepLinks,
@@ -1006,202 +1005,31 @@ export default function Layout(props: ParentProps) {
     }
   }
 
-  command.register("layout", () => {
-    const commands: CommandOption[] = [
-      {
-        id: "sidebar.toggle",
-        title: language.t("command.sidebar.toggle"),
-        category: language.t("command.category.view"),
-        keybind: "mod+b",
-        onSelect: () => layout.sidebar.toggle(),
-      },
-      {
-        id: "project.open",
-        title: language.t("command.project.open"),
-        category: language.t("command.category.project"),
-        keybind: "mod+o",
-        onSelect: () => chooseProject(),
-      },
-      {
-        id: "project.previous",
-        title: language.t("command.project.previous"),
-        category: language.t("command.category.project"),
-        keybind: "mod+alt+arrowup",
-        onSelect: () => navigateProjectByOffset(-1),
-      },
-      {
-        id: "project.next",
-        title: language.t("command.project.next"),
-        category: language.t("command.category.project"),
-        keybind: "mod+alt+arrowdown",
-        onSelect: () => navigateProjectByOffset(1),
-      },
-      {
-        id: "provider.connect",
-        title: language.t("command.provider.connect"),
-        category: language.t("command.category.provider"),
-        onSelect: () => connectProvider(),
-      },
-      {
-        id: "server.switch",
-        title: language.t("command.server.switch"),
-        category: language.t("command.category.server"),
-        onSelect: () => openServer(),
-      },
-      {
-        id: "settings.open",
-        title: language.t("command.settings.open"),
-        category: language.t("command.category.settings"),
-        keybind: "mod+comma",
-        onSelect: () => openSettings(),
-      },
-      {
-        id: "session.previous",
-        title: language.t("command.session.previous"),
-        category: language.t("command.category.session"),
-        keybind: "alt+arrowup",
-        onSelect: () => navigateSessionByOffset(-1),
-      },
-      {
-        id: "session.next",
-        title: language.t("command.session.next"),
-        category: language.t("command.category.session"),
-        keybind: "alt+arrowdown",
-        onSelect: () => navigateSessionByOffset(1),
-      },
-      {
-        id: "session.previous.unseen",
-        title: language.t("command.session.previous.unseen"),
-        category: language.t("command.category.session"),
-        keybind: "shift+alt+arrowup",
-        onSelect: () => navigateSessionByUnseen(-1),
-      },
-      {
-        id: "session.next.unseen",
-        title: language.t("command.session.next.unseen"),
-        category: language.t("command.category.session"),
-        keybind: "shift+alt+arrowdown",
-        onSelect: () => navigateSessionByUnseen(1),
-      },
-      {
-        id: "session.archive",
-        title: language.t("command.session.archive"),
-        category: language.t("command.category.session"),
-        keybind: "mod+shift+backspace",
-        disabled: !params.dir || !params.id,
-        onSelect: () => {
-          const session = currentSessions().find((s) => s.id === params.id)
-          if (session) archiveSession(session)
-        },
-      },
-      {
-        id: "workspace.new",
-        title: language.t("workspace.new"),
-        category: language.t("command.category.workspace"),
-        keybind: "mod+shift+w",
-        disabled: !workspaceSetting(),
-        onSelect: () => {
-          const project = currentProject()
-          if (!project) return
-          return createWorkspace(project)
-        },
-      },
-      {
-        id: "workspace.toggle",
-        title: language.t("command.workspace.toggle"),
-        description: language.t("command.workspace.toggle.description"),
-        category: language.t("command.category.workspace"),
-        slash: "workspace",
-        disabled: !currentProject() || currentProject()?.vcs !== "git",
-        onSelect: () => {
-          const project = currentProject()
-          if (!project) return
-          if (project.vcs !== "git") return
-          const wasEnabled = layout.sidebar.workspaces(project.worktree)()
-          layout.sidebar.toggleWorkspaces(project.worktree)
-          showToast({
-            title: wasEnabled
-              ? language.t("toast.workspace.disabled.title")
-              : language.t("toast.workspace.enabled.title"),
-            description: wasEnabled
-              ? language.t("toast.workspace.disabled.description")
-              : language.t("toast.workspace.enabled.description"),
-          })
-        },
-      },
-      {
-        id: "theme.cycle",
-        title: language.t("command.theme.cycle"),
-        category: language.t("command.category.theme"),
-        keybind: "mod+shift+t",
-        onSelect: () => cycleTheme(1),
-      },
-    ]
-
-    for (const [id, definition] of availableThemeEntries()) {
-      commands.push({
-        id: `theme.set.${id}`,
-        title: language.t("command.theme.set", { theme: definition.name ?? id }),
-        category: language.t("command.category.theme"),
-        onSelect: () => theme.commitPreview(),
-        onHighlight: () => {
-          theme.previewTheme(id)
-          return () => theme.cancelPreview()
-        },
-      })
-    }
-
-    commands.push({
-      id: "theme.scheme.cycle",
-      title: language.t("command.theme.scheme.cycle"),
-      category: language.t("command.category.theme"),
-      keybind: "mod+shift+s",
-      onSelect: () => cycleColorScheme(1),
-    })
-
-    for (const scheme of colorSchemeOrder) {
-      commands.push({
-        id: `theme.scheme.${scheme}`,
-        title: language.t("command.theme.scheme.set", { scheme: colorSchemeLabel(scheme) }),
-        category: language.t("command.category.theme"),
-        onSelect: () => theme.commitPreview(),
-        onHighlight: () => {
-          theme.previewColorScheme(scheme)
-          return () => theme.cancelPreview()
-        },
-      })
-    }
-
-    commands.push({
-      id: "language.cycle",
-      title: language.t("command.language.cycle"),
-      category: language.t("command.category.language"),
-      onSelect: () => cycleLanguage(1),
-    })
-
-    for (const locale of language.locales) {
-      commands.push({
-        id: `language.set.${locale}`,
-        title: language.t("command.language.set", { language: language.label(locale) }),
-        category: language.t("command.category.language"),
-        onSelect: () => setLocale(locale),
-      })
-    }
-
-    return commands
+  registerLayoutCommands({
+    command,
+    params,
+    dialog,
+    language,
+    layout,
+    currentProject,
+    currentSessions,
+    workspaceSetting,
+    availableThemeEntries,
+    colorSchemeOrder,
+    colorSchemeLabel,
+    chooseProject,
+    showEditProjectDialog,
+    navigateProjectByOffset,
+    navigateSessionByOffset,
+    navigateSessionByUnseen,
+    archiveSession,
+    createWorkspace: (project) => createWorkspace(project),
+    cycleTheme,
+    cycleColorScheme,
+    cycleLanguage,
+    setLocale,
+    theme,
   })
-
-  function connectProvider() {
-    dialog.show(() => <DialogSelectProvider />)
-  }
-
-  function openServer() {
-    dialog.show(() => <DialogSelectServer />)
-  }
-
-  function openSettings() {
-    dialog.show(() => <DialogSettings />)
-  }
 
   function projectRoot(directory: string) {
     const key = workspaceKey(directory)
@@ -1427,7 +1255,9 @@ export default function Layout(props: ParentProps) {
     layout.sidebar.toggleWorkspaces(project.worktree)
   }
 
-  const showEditProjectDialog = (project: LocalProject) => dialog.show(() => <DialogEditProject project={project} />)
+  function showEditProjectDialog(project: LocalProject) {
+    dialog.show(() => <DialogEditProject project={project} />)
+  }
 
   async function chooseProject() {
     function resolve(result: string | string[] | null) {
@@ -2289,7 +2119,7 @@ export default function Layout(props: ParentProps) {
                 </div>
               </div>
               <div data-component="getting-started-actions">
-                <Button size="large" icon="plus-small" onClick={connectProvider}>
+                <Button size="large" icon="plus-small" onClick={() => showProviderDialog(dialog)}>
                   {language.t("command.provider.connect")}
                 </Button>
                 <Button size="large" variant="ghost" onClick={() => setStore("gettingStartedDismissed", true)}>
@@ -2323,7 +2153,7 @@ export default function Layout(props: ParentProps) {
       renderProjectOverlay={projectOverlay}
       settingsLabel={() => language.t("sidebar.settings")}
       settingsKeybind={() => command.keybind("settings.open")}
-      onOpenSettings={openSettings}
+      onOpenSettings={() => showSettingsDialog(dialog)}
       helpLabel={() => language.t("sidebar.help")}
       onOpenHelp={() => platform.openLink("https://opencode.ai/desktop-feedback")}
       renderPanel={() =>
