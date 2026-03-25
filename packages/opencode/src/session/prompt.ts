@@ -82,6 +82,15 @@ export namespace SessionPrompt {
     },
     async (current) => {
       for (const item of Object.values(current)) {
+        // Reject all pending callbacks to prevent callers from hanging
+        const cancelError = new DOMException("Session cancelled", "AbortError")
+        for (const callback of item.callbacks) {
+          try {
+            callback.reject(cancelError)
+          } catch (e) {
+            log.error("failed to reject callback during dispose", { error: e })
+          }
+        }
         item.abort.abort()
       }
     },
@@ -265,6 +274,15 @@ export namespace SessionPrompt {
       await SessionStatus.set(sessionID, { type: "idle" })
       return
     }
+    // Reject all pending callbacks to prevent callers from hanging
+    const cancelError = new DOMException("Session cancelled", "AbortError")
+    for (const callback of match.callbacks) {
+      try {
+        callback.reject(cancelError)
+      } catch (e) {
+        log.error("failed to reject callback during cancel", { error: e, sessionID })
+      }
+    }
     match.abort.abort()
     delete s[sessionID]
     await SessionStatus.set(sessionID, { type: "idle" })
@@ -281,8 +299,14 @@ export namespace SessionPrompt {
     const abort = resume_existing ? resume(sessionID) : start(sessionID)
     if (!abort) {
       return new Promise<MessageV2.WithParts>((resolve, reject) => {
-        const callbacks = state()[sessionID].callbacks
-        callbacks.push({ resolve, reject })
+        const current = state()
+        const sessionState = current[sessionID]
+        // Check if session state exists to prevent hanging on race conditions
+        if (!sessionState) {
+          reject(new DOMException("Session state not found", "AbortError"))
+          return
+        }
+        sessionState.callbacks.push({ resolve, reject })
       })
     }
 
