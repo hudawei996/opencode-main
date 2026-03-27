@@ -22,7 +22,7 @@ import { DialogAgent } from "@tui/component/dialog-agent"
 import { DialogSessionList } from "@tui/component/dialog-session-list"
 import { DialogWorkspaceList } from "@tui/component/dialog-workspace-list"
 import { KeybindProvider } from "@tui/context/keybind"
-import { ThemeProvider, useTheme } from "@tui/context/theme"
+import { ThemeProvider, selectedForeground, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
 import { PromptHistoryProvider } from "./component/prompt/history"
@@ -217,10 +217,10 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const sync = useSync()
   const exit = useExit()
   const promptRef = usePromptRef()
+  const click = Selection.click()
 
   useKeyboard((evt) => {
-    if (!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
-    if (!renderer.getSelection()) return
+    if (!Selection.active(renderer)) return
 
     // Windows Terminal-like behavior:
     // - Ctrl+C copies and dismisses selection
@@ -238,12 +238,14 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     }
 
     if (evt.name === "escape") {
+      Selection.dismiss(renderer)
       renderer.clearSelection()
       evt.preventDefault()
       evt.stopPropagation()
       return
     }
 
+    Selection.dismiss(renderer)
     renderer.clearSelection()
   })
 
@@ -258,6 +260,13 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     renderer.clearSelection()
   }
   const [terminalTitleEnabled, setTerminalTitleEnabled] = createSignal(kv.get("terminal_title_enabled", true))
+
+  createEffect(() => {
+    Selection.configure(renderer, {
+      bg: theme.primary,
+      fg: selectedForeground(theme, theme.primary),
+    })
+  })
 
   createEffect(() => {
     console.log(JSON.stringify(route.data))
@@ -795,6 +804,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       height={dimensions().height}
       backgroundColor={theme.background}
       onMouseDown={(evt) => {
+        if (Selection.press(click, renderer, evt)) return
         if (!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
         if (evt.button !== MouseButton.RIGHT) return
 
@@ -802,7 +812,11 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         evt.preventDefault()
         evt.stopPropagation()
       }}
-      onMouseUp={Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? undefined : () => Selection.copy(renderer, toast)}
+      onMouseUp={(evt) => {
+        if (Selection.release(click, renderer, toast, evt)) return
+        if (Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
+        Selection.copy(renderer, toast)
+      }}
     >
       <Switch>
         <Match when={route.data.type === "home"}>
@@ -864,6 +878,7 @@ function ErrorComponent(props: {
   issueURL.searchParams.set("opencode-version", Installation.VERSION)
 
   const copyIssueURL = () => {
+    if (Selection.active(renderer)) return
     Clipboard.copy(issueURL.toString()).then(() => {
       setCopied(true)
     })
@@ -884,10 +899,24 @@ function ErrorComponent(props: {
       </box>
       <box flexDirection="row" gap={2} alignItems="center">
         <text fg={colors.text}>A fatal error occurred!</text>
-        <box onMouseUp={props.reset} backgroundColor={colors.primary} padding={1}>
+        <box
+          onMouseUp={() => {
+            if (Selection.active(renderer)) return
+            props.reset()
+          }}
+          backgroundColor={colors.primary}
+          padding={1}
+        >
           <text fg={colors.bg}>Reset TUI</text>
         </box>
-        <box onMouseUp={handleExit} backgroundColor={colors.primary} padding={1}>
+        <box
+          onMouseUp={() => {
+            if (Selection.active(renderer)) return
+            handleExit()
+          }}
+          backgroundColor={colors.primary}
+          padding={1}
+        >
           <text fg={colors.bg}>Exit</text>
         </box>
       </box>

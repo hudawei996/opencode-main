@@ -3,7 +3,8 @@ import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { createStore } from "solid-js/store"
 import { For } from "solid-js"
-import { useKeyboard } from "@opentui/solid"
+import { useKeyboard, useRenderer } from "@opentui/solid"
+import { Selection } from "../util/selection"
 import { Locale } from "@/util/locale"
 
 export type DialogConfirmProps = {
@@ -19,6 +20,7 @@ export type DialogConfirmResult = boolean | undefined
 export function DialogConfirm(props: DialogConfirmProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
+  const renderer = useRenderer()
   const [store, setStore] = createStore({
     active: "confirm" as "confirm" | "cancel",
   })
@@ -40,7 +42,13 @@ export function DialogConfirm(props: DialogConfirmProps) {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+        <text
+          fg={theme.textMuted}
+          onMouseUp={() => {
+            if (Selection.active(renderer)) return
+            dialog.clear()
+          }}
+        >
           esc
         </text>
       </box>
@@ -55,6 +63,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
               paddingRight={1}
               backgroundColor={key === store.active ? theme.primary : undefined}
               onMouseUp={(evt) => {
+                if (Selection.active(renderer)) return
                 if (key === "confirm") props.onConfirm?.()
                 if (key === "cancel") props.onCancel?.()
                 dialog.clear()
