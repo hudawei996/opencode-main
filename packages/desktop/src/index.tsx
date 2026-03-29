@@ -16,7 +16,7 @@ import {
 } from "@opencode-ai/app"
 import type { AsyncStorage } from "@solid-primitives/storage"
 import { getCurrentWindow } from "@tauri-apps/api/window"
-import { readImage } from "@tauri-apps/plugin-clipboard-manager"
+import { readImage, writeText } from "@tauri-apps/plugin-clipboard-manager"
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link"
 import { open, save } from "@tauri-apps/plugin-dialog"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
@@ -405,6 +405,13 @@ const createPlatform = (): Platform => {
           )
         }, "image/png")
       })
+    },
+
+    writeClipboardText: async (value: string) => {
+      return writeText(value).then(
+        () => true,
+        () => false,
+      )
     },
   }
 }
