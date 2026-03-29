@@ -118,7 +118,12 @@ export async function createMenu(trigger: (id: string) => void) {
           await MenuItem.new({
             action: () => trigger("terminal.toggle"),
             text: t("desktop.menu.view.toggleTerminal"),
-            accelerator: "Ctrl+`",
+            accelerator: "Cmd+J",
+          }),
+          await MenuItem.new({
+            action: () => trigger("browser.toggle"),
+            text: t("desktop.menu.view.toggleBrowser"),
+            accelerator: "Cmd+Shift+B",
           }),
           await MenuItem.new({
             action: () => trigger("fileTree.toggle"),

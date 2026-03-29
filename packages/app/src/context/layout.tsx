@@ -17,6 +17,9 @@ const DEFAULT_SIDEBAR_WIDTH = 344
 const DEFAULT_FILE_TREE_WIDTH = 200
 const DEFAULT_SESSION_WIDTH = 600
 const DEFAULT_TERMINAL_HEIGHT = 280
+const DEFAULT_TERMINAL_WIDTH = 420
+const DEFAULT_BROWSER_WIDTH = 420
+type TerminalDock = "bottom" | "right"
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
 
 export function getAvatarColors(key?: string) {
@@ -182,6 +185,26 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }
       })()
 
+      const terminal = value.terminal
+      const migratedTerminal = (() => {
+        if (!isRecord(terminal)) return terminal
+
+        const height = typeof terminal.height === "number" ? terminal.height : DEFAULT_TERMINAL_HEIGHT
+        const width = typeof terminal.width === "number" ? terminal.width : DEFAULT_TERMINAL_WIDTH
+        const dock: TerminalDock = terminal.dock === "right" ? "right" : "bottom"
+
+        if (height === terminal.height && width === terminal.width && dock === terminal.dock) {
+          return terminal
+        }
+
+        return {
+          ...terminal,
+          height,
+          width,
+          dock,
+        }
+      })()
+
       const sessionTabs = value.sessionTabs
       const migratedSessionTabs = (() => {
         if (!isRecord(sessionTabs)) return sessionTabs
@@ -199,7 +222,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             if (current.all.length !== tabs.all.length) changed = true
             if (!same(current.all, normalized.all) || current.active !== normalized.active) changed = true
             if (tabs.active !== undefined && typeof tabs.active !== "string") changed = true
-            return [key, normalized]
+            return [key, tabs]
           }),
         )
 
@@ -207,11 +230,28 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         return next
       })()
 
+      const browser = value.browser
+      const migratedBrowser = (() => {
+        if (!isRecord(browser)) return browser
+        const url = typeof browser.url === "string" ? browser.url : undefined
+        const { dock: _, height: __, ...rest } = browser
+        return {
+          ...rest,
+          urls: isRecord(rest.urls)
+            ? rest.urls
+            : url
+              ? ({ global: url } as Record<string, string>)
+              : ({} as Record<string, string>),
+        }
+      })()
+
       if (
         migratedSidebar === sidebar &&
         migratedReview === review &&
         migratedFileTree === fileTree &&
-        migratedSessionTabs === sessionTabs
+        migratedTerminal === terminal &&
+        migratedSessionTabs === sessionTabs &&
+        migratedBrowser === browser
       ) {
         return value
       }
@@ -221,11 +261,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         sidebar: migratedSidebar,
         review: migratedReview,
         fileTree: migratedFileTree,
+        terminal: migratedTerminal,
         sessionTabs: migratedSessionTabs,
+        browser: migratedBrowser,
       }
     }
 
-    const target = Persist.global("layout", ["layout.v6"])
+    const target = Persist.global("layout", ["layout.v7", "layout.v8", "layout.v9"])
     const [store, setStore, _, ready] = persisted(
       { ...target, migrate },
       createStore({
@@ -237,7 +279,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         terminal: {
           height: DEFAULT_TERMINAL_HEIGHT,
+          width: DEFAULT_TERMINAL_WIDTH,
+          dock: "bottom" as TerminalDock,
           opened: false,
+        },
+        browser: {
+          width: DEFAULT_BROWSER_WIDTH,
+          opened: false,
+          urls: {} as Record<string, string | undefined>,
         },
         review: {
           diffStyle: "split" as ReviewDiffStyle,
@@ -627,8 +676,31 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       terminal: {
         height: createMemo(() => store.terminal.height),
+        width: createMemo(() => store.terminal.width),
+        dock: createMemo(() => store.terminal.dock ?? "bottom"),
         resize(height: number) {
           setStore("terminal", "height", height)
+        },
+        resizeWidth(width: number) {
+          setStore("terminal", "width", width)
+        },
+        setDock(dock: TerminalDock) {
+          setStore("terminal", "dock", dock)
+        },
+        toggleDock() {
+          setStore("terminal", "dock", (dock) => (dock === "right" ? "bottom" : "right"))
+        },
+      },
+      browser: {
+        width: createMemo(() => store.browser.width),
+        url(directory: string) {
+          return store.browser.urls[directory] ?? store.browser.urls.global
+        },
+        resizeWidth(width: number) {
+          setStore("browser", "width", width)
+        },
+        setUrl(directory: string, url: string | undefined) {
+          setStore("browser", "urls", directory, url)
         },
       },
       review: {
@@ -750,6 +822,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const key = createSessionKeyReader(sessionKey, ensureKey)
         const s = createMemo(() => store.sessionView[key()] ?? { scroll: {} })
         const terminalOpened = createMemo(() => store.terminal?.opened ?? false)
+        const browserOpened = createMemo(() => store.browser?.opened ?? false)
         const reviewPanelOpened = createMemo(() => store.review?.panelOpened ?? true)
 
         function setTerminalOpened(next: boolean) {
@@ -762,6 +835,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           const value = current.opened ?? false
           if (value === next) return
           setStore("terminal", "opened", next)
+        }
+
+        function setBrowserOpened(next: boolean) {
+          const current = store.browser
+          if (!current) {
+            setStore("browser", { opened: next })
+            return
+          }
+
+          const value = current.opened ?? false
+          if (value === next) return
+          setStore("browser", "opened", next)
         }
 
         function setReviewPanelOpened(next: boolean) {
@@ -793,6 +878,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             },
             toggle() {
               setTerminalOpened(!terminalOpened())
+            },
+          },
+          browser: {
+            opened: browserOpened,
+            open() {
+              setBrowserOpened(true)
+            },
+            close() {
+              setBrowserOpened(false)
+            },
+            toggle() {
+              setBrowserOpened(!browserOpened())
             },
           },
           reviewPanel: {
