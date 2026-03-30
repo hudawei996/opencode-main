@@ -262,4 +262,12 @@ export interface Hooks {
    * Modify tool definitions (description and parameters) sent to LLM
    */
   "tool.definition"?: (input: { toolID: string }, output: { description: string; parameters: any }) => Promise<void>
+  /**
+   * Called before the agent loop exits. Set `output.stop = false` and
+   * provide `output.message` to inject a user message and continue the loop.
+   */
+  "session.stopping"?: (
+    input: { sessionID: string },
+    output: { stop: boolean; message?: string },
+  ) => Promise<void>
 }
