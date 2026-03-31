@@ -11,6 +11,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { AppFileSystem } from "../../src/filesystem"
 import * as CrossSpawnSpawner from "../../src/effect/cross-spawn-spawner"
+import { Filesystem } from "../../src/util/filesystem"
 
 Log.init({ print: false })
 
@@ -240,15 +241,57 @@ describe("Project.fromDirectory with worktrees", () => {
         .catch(() => {})
     }
   })
+
+  test("should prefer sandbox .opencode icon over worktree icon", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const child = path.join(tmp.path, "child")
+    const root = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x01, 0x02, 0x03, 0x04])
+    const local = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x09, 0x08, 0x07, 0x06])
+
+    await Filesystem.write(path.join(tmp.path, ".opencode", "icon.png"), root)
+    await Filesystem.write(path.join(child, ".opencode", "icon.png"), local)
+
+    const { project } = await Project.fromDirectory(child)
+
+    expect(project.worktree).toBe(tmp.path)
+    expect(project.icon?.url).toContain(local.toString("base64"))
+    expect(project.icon?.url).not.toContain(root.toString("base64"))
+  })
 })
 
 describe("Project.discover", () => {
-  test("should discover favicon.png in root", async () => {
+  test("should prefer icon from .opencode/icon", async () => {
+    const iconData = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xaa, 0xbb, 0xcc])
+    await using tmp = await tmpdir({ git: true })
+    await Filesystem.write(path.join(tmp.path, ".opencode", "icon", "project-icon.png"), iconData)
+    await Bun.write(path.join(tmp.path, "favicon.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+
+    const { project } = await Project.fromDirectory(tmp.path)
+
+    expect(project.icon?.url).toContain(iconData.toString("base64"))
+    expect(project.icon?.override).toContain(iconData.toString("base64"))
+    expect(project.icon?.color).toBeUndefined()
+  })
+
+  test("should prefer favicon under .opencode", async () => {
+    const localData = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x11, 0x22, 0x33, 0x44])
+    await using tmp = await tmpdir({ git: true })
+    await Filesystem.write(path.join(tmp.path, ".opencode", "assets", "favicon.png"), localData)
+    await Bun.write(path.join(tmp.path, "favicon.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+
+    const { project } = await Project.fromDirectory(tmp.path)
+
+    expect(project.icon?.url).toContain(localData.toString("base64"))
+    expect(project.icon?.override).toContain(localData.toString("base64"))
+    expect(project.icon?.color).toBeUndefined()
+  })
+
+  test("should discover favicon under .opencode", async () => {
     await using tmp = await tmpdir({ git: true })
     const { project } = await Project.fromDirectory(tmp.path)
 
     const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-    await Bun.write(path.join(tmp.path, "favicon.png"), pngData)
+    await Filesystem.write(path.join(tmp.path, ".opencode", "favicon.png"), pngData)
 
     await Project.discover(project)
 
@@ -318,6 +361,23 @@ describe("Project.update", () => {
 
     const fromDb = Project.get(project.id)
     expect(fromDb?.icon?.color).toBe("#ff0000")
+  })
+
+  test("should map icon override to stored url", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const { project } = await Project.fromDirectory(tmp.path)
+
+    const updated = await Project.update({
+      projectID: project.id,
+      icon: { override: "https://example.com/override.png" },
+    })
+
+    expect(updated.icon?.url).toBe("https://example.com/override.png")
+    expect(updated.icon?.override).toBe("https://example.com/override.png")
+
+    const fromDb = Project.get(project.id)
+    expect(fromDb?.icon?.url).toBe("https://example.com/override.png")
+    expect(fromDb?.icon?.override).toBe("https://example.com/override.png")
   })
 
   test("should update commands", async () => {

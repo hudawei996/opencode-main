@@ -203,9 +203,13 @@ export async function bootstrapDirectory(input: {
   }
 }) {
   const loading = input.store.status !== "complete"
-  const seededProject = projectID(input.directory, input.global.project)
+  const seeded = input.global.project.find(
+    (project) => project.worktree === input.directory || project.sandboxes?.includes(input.directory),
+  )
+  const seededProject = seeded?.id
   const seededPath = input.global.path.directory === input.directory ? input.global.path : undefined
   if (seededProject) input.setStore("project", seededProject)
+  if (seeded?.icon) input.setStore("icon", seeded.icon.url ?? seeded.icon.override)
   if (seededPath) input.setStore("path", seededPath)
   if (input.store.provider.all.length === 0 && input.global.provider.all.length > 0) {
     input.setStore("provider", input.global.provider)
@@ -232,7 +236,12 @@ export async function bootstrapDirectory(input: {
     () =>
       seededProject
         ? Promise.resolve()
-        : retry(() => input.sdk.project.current()).then((x) => input.setStore("project", x.data!.id)),
+        : retry(() =>
+            input.sdk.project.current().then((x) => {
+              input.setStore("project", x.data!.id)
+              input.setStore("icon", x.data?.icon?.url ?? x.data?.icon?.override)
+            }),
+          ),
     () =>
       seededPath
         ? Promise.resolve()

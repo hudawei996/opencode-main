@@ -57,7 +57,7 @@ export namespace Project {
   export function fromRow(row: Row): Info {
     const icon =
       row.icon_url || row.icon_color
-        ? { url: row.icon_url ?? undefined, color: row.icon_color ?? undefined }
+        ? { url: row.icon_url ?? undefined, override: row.icon_url ?? undefined, color: row.icon_color ?? undefined }
         : undefined
     return {
       id: row.id,
@@ -151,6 +151,58 @@ export namespace Project {
         if (pathSvc.isAbsolute(name)) return pathSvc.normalize(name)
         return pathSvc.resolve(cwd, name)
       }
+
+      const sortPath = (a: string, b: string) => {
+        if (a.length !== b.length) return a.length - b.length
+        return a.localeCompare(b)
+      }
+
+      const iconURL = Effect.fnUntraced(function* (file: string) {
+        const text = yield* fs.readFileString(file).pipe(
+          Effect.map((x) => x.trim()),
+          Effect.catch(() => Effect.succeed(undefined)),
+        )
+        if (!text) return
+        if (text.startsWith("data:")) return text
+        if (text.startsWith("http://") || text.startsWith("https://")) return text
+        const line = text
+          .split(/\r?\n/)
+          .map((x) => x.trim())
+          .find((x) => x.toUpperCase().startsWith("URL="))
+        if (!line) return
+        const url = line.slice(4).trim()
+        if (!url.startsWith("data:") && !url.startsWith("http://") && !url.startsWith("https://")) return
+        return url
+      })
+
+      const iconData = Effect.fnUntraced(function* (file: string) {
+        if (pathSvc.extname(file).toLowerCase() === ".url") return yield* iconURL(file)
+        const mime = AppFileSystem.mimeType(file)
+        if (!mime.startsWith("image/")) return
+        const buffer = yield* fs.readFile(file).pipe(Effect.orDie)
+        return `data:${mime};base64,${Buffer.from(buffer).toString("base64")}`
+      })
+
+      const scanIcons = Effect.fnUntraced(function* (pattern: string, cwd: string) {
+        return yield* fs.glob(pattern, { cwd, absolute: true, include: "file" }).pipe(
+          Effect.orDie,
+          Effect.map((files) => files.toSorted(sortPath)),
+        )
+      })
+
+      const configuredIcon = Effect.fnUntraced(function* (worktree: string) {
+        for (const files of [
+          yield* scanIcons(".opencode/icon/**/*", worktree),
+          yield* scanIcons(".opencode/icon.{ico,png,svg,jpg,jpeg,webp,avif,gif,url}", worktree),
+          yield* scanIcons(".opencode/**/favicon.{ico,png,svg,jpg,jpeg,webp,avif,gif,url}", worktree),
+        ]) {
+          for (const file of files) {
+            const url = yield* iconData(file).pipe(Effect.catch(() => Effect.succeed(undefined)))
+            if (!url) continue
+            return { url }
+          }
+        }
+      })
 
       const scope = yield* Scope.Scope
 
@@ -256,11 +308,36 @@ export namespace Project {
               time: { created: Date.now(), updated: Date.now() },
             }
 
-        if (Flag.OPENCODE_EXPERIMENTAL_ICON_DISCOVERY)
-          yield* discover(existing).pipe(Effect.ignore, Effect.forkIn(scope))
+        const icon = yield* configuredIcon(directory).pipe(
+          Effect.flatMap((item) => {
+            if (item) return Effect.succeed(item)
+            if (directory === data.worktree) return Effect.succeed(undefined)
+            return configuredIcon(data.worktree)
+          }),
+          Effect.map((item) => {
+            if (!item) return existing.icon
+            return {
+              ...existing.icon,
+              ...item,
+              override: item.url ?? existing.icon?.override,
+            }
+          }),
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              log.warn("failed to load project icon from .opencode", { error, directory, worktree: data.worktree })
+              return existing.icon
+            }),
+          ),
+        )
+        const seeded = {
+          ...existing,
+          icon,
+        }
+
+        if (Flag.OPENCODE_EXPERIMENTAL_ICON_DISCOVERY) yield* discover(seeded).pipe(Effect.ignore, Effect.forkIn(scope))
 
         const result: Info = {
-          ...existing,
+          ...seeded,
           worktree: data.worktree,
           vcs: data.vcs,
           time: { ...existing.time, updated: Date.now() },
@@ -285,7 +362,7 @@ export namespace Project {
               worktree: result.worktree,
               vcs: result.vcs ?? null,
               name: result.name,
-              icon_url: result.icon?.url,
+              icon_url: result.icon?.url ?? result.icon?.override,
               icon_color: result.icon?.color,
               time_created: result.time.created,
               time_updated: result.time.updated,
@@ -299,7 +376,7 @@ export namespace Project {
                 worktree: result.worktree,
                 vcs: result.vcs ?? null,
                 name: result.name,
-                icon_url: result.icon?.url,
+                icon_url: result.icon?.url ?? result.icon?.override,
                 icon_color: result.icon?.color,
                 time_updated: result.time.updated,
                 time_initialized: result.time.initialized,
@@ -329,21 +406,9 @@ export namespace Project {
         if (input.icon?.override) return
         if (input.icon?.url) return
 
-        const matches = yield* fs
-          .glob("**/favicon.{ico,png,svg,jpg,jpeg,webp}", {
-            cwd: input.worktree,
-            absolute: true,
-            include: "file",
-          })
-          .pipe(Effect.orDie)
-        const shortest = matches.sort((a, b) => a.length - b.length)[0]
-        if (!shortest) return
-
-        const buffer = yield* fs.readFile(shortest).pipe(Effect.orDie)
-        const base64 = Buffer.from(buffer).toString("base64")
-        const mime = AppFileSystem.mimeType(shortest)
-        const url = `data:${mime};base64,${base64}`
-        yield* update({ projectID: input.id, icon: { url } })
+        const item = yield* configuredIcon(input.worktree)
+        if (!item) return
+        yield* update({ projectID: input.id, icon: { url: item.url } })
       })
 
       const list = Effect.fn("Project.list")(function* () {
@@ -361,7 +426,7 @@ export namespace Project {
             .update(ProjectTable)
             .set({
               name: input.name,
-              icon_url: input.icon?.url,
+              icon_url: input.icon?.url ?? input.icon?.override,
               icon_color: input.icon?.color,
               commands: input.commands,
               time_updated: Date.now(),

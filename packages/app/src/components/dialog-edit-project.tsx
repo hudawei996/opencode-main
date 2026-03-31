@@ -8,7 +8,8 @@ import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { type LocalProject, getAvatarColors } from "@/context/layout"
+import { type LocalProject } from "@/context/layout"
+import { getAvatarColors } from "@/context/project-avatar"
 import { getFilename } from "@opencode-ai/util/path"
 import { Avatar } from "@opencode-ai/ui/avatar"
 import { useLanguage } from "@/context/language"
@@ -27,7 +28,7 @@ export function DialogEditProject(props: { project: LocalProject }) {
   const [store, setStore] = createStore({
     name: defaultName(),
     color: props.project.icon?.color || "pink",
-    iconUrl: props.project.icon?.override || "",
+    iconUrl: props.project.icon?.url || props.project.icon?.override || "",
     startup: props.project.commands?.start ?? "",
     dragOver: false,
     iconHover: false,
