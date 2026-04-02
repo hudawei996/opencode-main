@@ -28,6 +28,8 @@ import { Provider } from "../../provider/provider"
 import { Bus } from "../../bus"
 import { MessageV2 } from "../../session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
+import { $ } from "bun"
+import os from "os"
 import { setTimeout as sleep } from "node:timers/promises"
 import { Process } from "@/util/process"
 import { git } from "@/util/git"
@@ -156,10 +158,42 @@ type RepoEvent = (typeof REPO_EVENTS)[number]
 // - git@github.com:owner/repo
 // - ssh://git@github.com/owner/repo.git
 // - ssh://git@github.com/owner/repo
-export function parseGitHubRemote(url: string): { owner: string; repo: string } | null {
-  const match = url.match(/^(?:(?:https?|ssh):\/\/)?(?:git@)?github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/)
+// - git@alias:owner/repo (SSH alias support)
+export async function parseGitHubRemote(
+  url: string,
+  options?: { homeDir?: string },
+): Promise<{ owner: string; repo: string } | null> {
+  const parsed = parseRemote(url)
+  if (!parsed) return null
+  const { hostname, owner, repo } = parsed
+
+  if (hostname === "github.com") return { owner, repo }
+
+  const sshResolved = await resolveSshHost(hostname, options?.homeDir)
+  if (sshResolved === "github.com") return { owner, repo }
+
+  return null
+}
+
+function parseRemote(url: string): { hostname: string; owner: string; repo: string } | null {
+  const match = url.match(/^(?:(?:https?|ssh):\/\/)?(?:git@)?([^:/]+)[:/]([^/]+)\/([^/]+?)(?:\.git)?$/)
   if (!match) return null
-  return { owner: match[1], repo: match[2] }
+  return { hostname: match[1], owner: match[2], repo: match[3] }
+}
+
+async function resolveSshHost(hostname: string, homeDir?: string): Promise<string | null> {
+  const home = homeDir ?? os.homedir()
+  if (!home) return null
+  const sshConfig = `${home}/.ssh/config`
+  const result = await $`ssh -F ${sshConfig} -G ${hostname}`.nothrow().text()
+  if (!result.trim()) return null
+
+  for (const line of result.split("\n")) {
+    const match = line.match(/^hostname\s+(.+)$/i)
+    if (match) return match[1]
+  }
+
+  return null
 }
 
 /**
@@ -258,7 +292,7 @@ export const GithubInstallCommand = cmd({
 
             // Get repo info
             const info = (await git(["remote", "get-url", "origin"], { cwd: Instance.worktree })).text().trim()
-            const parsed = parseGitHubRemote(info)
+            const parsed = await parseGitHubRemote(info)
             if (!parsed) {
               prompts.log.error(`Could not find git repository. Please run this command from a git repository.`)
               throw new UI.CancelledError()
