@@ -97,13 +97,31 @@ jobs:
         run: bunx playwright install chromium
 
       - name: Run app e2e tests
+        id: e2e
         run: bun --cwd packages/app test:e2e:local
         env:
           CI: true
         timeout-minutes: 30
 
+      - name: Detect Playwright flakes
+        id: playwright-status
+        if: always()
+        run: |
+          node <<'EOF'
+          const fs = require("fs")
+          const file = "packages/app/e2e/playwright-report/results.json"
+          if (!fs.existsSync(file)) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "flaky=false\nflaky_count=0\n")
+            process.exit(0)
+          }
+
+          const report = JSON.parse(fs.readFileSync(file, "utf8"))
+          const count = Number(report?.stats?.flaky ?? report?.suitesSummary?.flaky ?? 0)
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `flaky=${count > 0}\nflaky_count=${count}\n`)
+          EOF
+
       - name: Upload Playwright artifacts
-        if: failure()
+        if: failure() || steps.playwright-status.outputs.flaky == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-${{ matrix.settings.name }}-${{ github.run_attempt }}

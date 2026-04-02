@@ -19,7 +19,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers,
-  reporter: [["html", { outputFolder: "e2e/playwright-report", open: "never" }], ["line"]],
+  reporter: [
+    ["html", { outputFolder: "e2e/playwright-report", open: "never" }],
+    ["json", { outputFile: "e2e/playwright-report/results.json" }],
+    ["line"],
+  ],
   webServer: {
     command,
     url: baseURL,
