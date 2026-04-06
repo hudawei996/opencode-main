@@ -185,6 +185,23 @@ export function Prompt(props: PromptProps) {
 
   createEffect(
     on(
+      () => store.prompt.input,
+      (value) => {
+        sdk.fetch(sdk.url + "/tui/prompt", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...sdk.headers,
+          },
+          body: JSON.stringify({ input: value }),
+        })
+      },
+      { defer: true },
+    ),
+  )
+
+  createEffect(
+    on(
       () => props.sessionID,
       () => {
         setStore("placeholder", randomIndex(list().length))
