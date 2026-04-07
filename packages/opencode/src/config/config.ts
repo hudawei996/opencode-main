@@ -481,6 +481,7 @@ export namespace Config {
           list: PermissionRule.optional(),
           bash: PermissionRule.optional(),
           task: PermissionRule.optional(),
+          model_override: PermissionRule.optional(),
           external_directory: PermissionRule.optional(),
           todowrite: PermissionAction.optional(),
           question: PermissionAction.optional(),
