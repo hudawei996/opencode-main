@@ -1,5 +1,6 @@
 import { resolver } from "hono-openapi"
 import z from "zod"
+import "openapi-types"
 import { NotFoundError } from "../storage/db"
 
 export const ERRORS = {

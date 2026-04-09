@@ -1,0 +1,64 @@
+diff --git a/dist/index.d.mts b/dist/index.d.mts
+index e339fe99f4d3705e8ca94f1ce9cb7444dc6ed3ed..881296755bb2ccee116b118f4d35fc0a2de11d72 100644
+--- a/dist/index.d.mts
++++ b/dist/index.d.mts
+@@ -1,15 +1,15 @@
+ import { GatewayModelId } from '@ai-sdk/gateway';
+-export { GatewayModelId, createGateway, gateway } from '@ai-sdk/gateway';
+ import * as _ai_sdk_provider_utils from '@ai-sdk/provider-utils';
+ import { Tool, InferToolInput, InferToolOutput, FlexibleSchema, InferSchema, SystemModelMessage, ModelMessage, AssistantModelMessage, ToolModelMessage, ReasoningPart, ProviderOptions, UserModelMessage, IdGenerator, ToolCall, MaybePromiseLike, TextPart, FilePart, Resolvable, FetchFunction, DataContent } from '@ai-sdk/provider-utils';
+-export { AssistantContent, AssistantModelMessage, DataContent, DownloadError, FilePart, FlexibleSchema, IdGenerator, ImagePart, InferSchema, InferToolInput, InferToolOutput, ModelMessage, Schema, SystemModelMessage, TextPart, Tool, ToolApprovalRequest, ToolApprovalResponse, ToolCallOptions, ToolCallPart, ToolContent, ToolExecuteFunction, ToolExecutionOptions, ToolModelMessage, ToolResultPart, UserContent, UserModelMessage, asSchema, createIdGenerator, dynamicTool, generateId, jsonSchema, parseJsonEventStream, tool, zodSchema } from '@ai-sdk/provider-utils';
+ import * as _ai_sdk_provider from '@ai-sdk/provider';
+ import { EmbeddingModelV3, EmbeddingModelV2, EmbeddingModelV3Embedding, EmbeddingModelV3Middleware, ImageModelV3, ImageModelV2, ImageModelV3ProviderMetadata, ImageModelV2ProviderMetadata, ImageModelV3Middleware, JSONValue as JSONValue$1, LanguageModelV3, LanguageModelV2, SharedV3Warning, LanguageModelV3Source, LanguageModelV3Middleware, RerankingModelV3, SharedV3ProviderMetadata, SpeechModelV3, SpeechModelV2, TranscriptionModelV3, TranscriptionModelV2, JSONObject, ImageModelV3Usage, LanguageModelV3ToolChoice, AISDKError, LanguageModelV3ToolCall, JSONSchema7, LanguageModelV3CallOptions, JSONParseError, TypeValidationError, Experimental_VideoModelV3, EmbeddingModelV3CallOptions, ProviderV3, ProviderV2, NoSuchModelError } from '@ai-sdk/provider';
+-export { AISDKError, APICallError, EmptyResponseBodyError, InvalidPromptError, InvalidResponseDataError, JSONParseError, JSONSchema7, LoadAPIKeyError, LoadSettingError, NoContentGeneratedError, NoSuchModelError, TooManyEmbeddingValuesForCallError, TypeValidationError, UnsupportedFunctionalityError } from '@ai-sdk/provider';
+ import { AttributeValue, Tracer } from '@opentelemetry/api';
+ import { ServerResponse } from 'node:http';
+ import { ServerResponse as ServerResponse$1 } from 'http';
+ import { z } from 'zod/v4';
++export { GatewayModelId, createGateway, gateway } from '@ai-sdk/gateway';
++export { AssistantContent, AssistantModelMessage, DataContent, DownloadError, FilePart, FlexibleSchema, IdGenerator, ImagePart, InferSchema, InferToolInput, InferToolOutput, ModelMessage, Schema, SystemModelMessage, TextPart, Tool, ToolApprovalRequest, ToolApprovalResponse, ToolCallOptions, ToolCallPart, ToolContent, ToolExecuteFunction, ToolExecutionOptions, ToolModelMessage, ToolResultPart, UserContent, UserModelMessage, asSchema, createIdGenerator, dynamicTool, generateId, jsonSchema, parseJsonEventStream, tool, zodSchema } from '@ai-sdk/provider-utils';
++export { AISDKError, APICallError, EmptyResponseBodyError, InvalidPromptError, InvalidResponseDataError, JSONParseError, JSONSchema7, LoadAPIKeyError, LoadSettingError, NoContentGeneratedError, NoSuchModelError, TooManyEmbeddingValuesForCallError, TypeValidationError, UnsupportedFunctionalityError } from '@ai-sdk/provider';
+ 
+ /**
+  * Embedding model that is used by the AI SDK.
+@@ -2970,7 +2970,7 @@ type EnrichedStreamPart<TOOLS extends ToolSet, PARTIAL_OUTPUT> = {
+     partialOutput: PARTIAL_OUTPUT | undefined;
+ };
+ 
+-interface Output<OUTPUT = any, PARTIAL = any, ELEMENT = any> {
++export interface Output<OUTPUT = any, PARTIAL = any, ELEMENT = any> {
+     /**
+      * The name of the output mode.
+      */
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index e339fe99f4d3705e8ca94f1ce9cb7444dc6ed3ed..881296755bb2ccee116b118f4d35fc0a2de11d72 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -1,15 +1,15 @@
+ import { GatewayModelId } from '@ai-sdk/gateway';
+-export { GatewayModelId, createGateway, gateway } from '@ai-sdk/gateway';
+ import * as _ai_sdk_provider_utils from '@ai-sdk/provider-utils';
+ import { Tool, InferToolInput, InferToolOutput, FlexibleSchema, InferSchema, SystemModelMessage, ModelMessage, AssistantModelMessage, ToolModelMessage, ReasoningPart, ProviderOptions, UserModelMessage, IdGenerator, ToolCall, MaybePromiseLike, TextPart, FilePart, Resolvable, FetchFunction, DataContent } from '@ai-sdk/provider-utils';
+-export { AssistantContent, AssistantModelMessage, DataContent, DownloadError, FilePart, FlexibleSchema, IdGenerator, ImagePart, InferSchema, InferToolInput, InferToolOutput, ModelMessage, Schema, SystemModelMessage, TextPart, Tool, ToolApprovalRequest, ToolApprovalResponse, ToolCallOptions, ToolCallPart, ToolContent, ToolExecuteFunction, ToolExecutionOptions, ToolModelMessage, ToolResultPart, UserContent, UserModelMessage, asSchema, createIdGenerator, dynamicTool, generateId, jsonSchema, parseJsonEventStream, tool, zodSchema } from '@ai-sdk/provider-utils';
+ import * as _ai_sdk_provider from '@ai-sdk/provider';
+ import { EmbeddingModelV3, EmbeddingModelV2, EmbeddingModelV3Embedding, EmbeddingModelV3Middleware, ImageModelV3, ImageModelV2, ImageModelV3ProviderMetadata, ImageModelV2ProviderMetadata, ImageModelV3Middleware, JSONValue as JSONValue$1, LanguageModelV3, LanguageModelV2, SharedV3Warning, LanguageModelV3Source, LanguageModelV3Middleware, RerankingModelV3, SharedV3ProviderMetadata, SpeechModelV3, SpeechModelV2, TranscriptionModelV3, TranscriptionModelV2, JSONObject, ImageModelV3Usage, LanguageModelV3ToolChoice, AISDKError, LanguageModelV3ToolCall, JSONSchema7, LanguageModelV3CallOptions, JSONParseError, TypeValidationError, Experimental_VideoModelV3, EmbeddingModelV3CallOptions, ProviderV3, ProviderV2, NoSuchModelError } from '@ai-sdk/provider';
+-export { AISDKError, APICallError, EmptyResponseBodyError, InvalidPromptError, InvalidResponseDataError, JSONParseError, JSONSchema7, LoadAPIKeyError, LoadSettingError, NoContentGeneratedError, NoSuchModelError, TooManyEmbeddingValuesForCallError, TypeValidationError, UnsupportedFunctionalityError } from '@ai-sdk/provider';
+ import { AttributeValue, Tracer } from '@opentelemetry/api';
+ import { ServerResponse } from 'node:http';
+ import { ServerResponse as ServerResponse$1 } from 'http';
+ import { z } from 'zod/v4';
++export { GatewayModelId, createGateway, gateway } from '@ai-sdk/gateway';
++export { AssistantContent, AssistantModelMessage, DataContent, DownloadError, FilePart, FlexibleSchema, IdGenerator, ImagePart, InferSchema, InferToolInput, InferToolOutput, ModelMessage, Schema, SystemModelMessage, TextPart, Tool, ToolApprovalRequest, ToolApprovalResponse, ToolCallOptions, ToolCallPart, ToolContent, ToolExecuteFunction, ToolExecutionOptions, ToolModelMessage, ToolResultPart, UserContent, UserModelMessage, asSchema, createIdGenerator, dynamicTool, generateId, jsonSchema, parseJsonEventStream, tool, zodSchema } from '@ai-sdk/provider-utils';
++export { AISDKError, APICallError, EmptyResponseBodyError, InvalidPromptError, InvalidResponseDataError, JSONParseError, JSONSchema7, LoadAPIKeyError, LoadSettingError, NoContentGeneratedError, NoSuchModelError, TooManyEmbeddingValuesForCallError, TypeValidationError, UnsupportedFunctionalityError } from '@ai-sdk/provider';
+ 
+ /**
+  * Embedding model that is used by the AI SDK.
+@@ -2970,7 +2970,7 @@ type EnrichedStreamPart<TOOLS extends ToolSet, PARTIAL_OUTPUT> = {
+     partialOutput: PARTIAL_OUTPUT | undefined;
+ };
+ 
+-interface Output<OUTPUT = any, PARTIAL = any, ELEMENT = any> {
++export interface Output<OUTPUT = any, PARTIAL = any, ELEMENT = any> {
+     /**
+      * The name of the output mode.
+      */

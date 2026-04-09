@@ -439,6 +439,7 @@
         "@typescript/native-preview": "catalog:",
         "drizzle-kit": "catalog:",
         "drizzle-orm": "catalog:",
+        "openapi-types": "12.1.3",
         "typescript": "catalog:",
         "vscode-languageserver-types": "3.17.5",
         "why-is-node-running": "3.2.2",
@@ -632,8 +633,10 @@
     "tree-sitter-bash",
   ],
   "patchedDependencies": {
+    "ai@6.0.149": "patches/ai@6.0.149.patch",
     "solid-js@1.9.10": "patches/solid-js@1.9.10.patch",
     "@standard-community/standard-openapi@0.2.9": "patches/@standard-community%2Fstandard-openapi@0.2.9.patch",
+    "hono-openapi@1.1.2": "patches/hono-openapi@1.1.2.patch",
   },
   "overrides": {
     "@types/bun": "catalog:",

@@ -192,7 +192,9 @@ export const ExperimentalRoutes = lazy(() =>
             id: t.id,
             description: t.description,
             // Handle both Zod schemas and plain JSON schemas
-            parameters: (t.parameters as any)?._def ? zodToJsonSchema(t.parameters as any) : t.parameters,
+            parameters: (t.parameters as any)?._def
+              ? (zodToJsonSchema(t.parameters as any) as any)
+              : (t.parameters as any),
           })),
         )
       },
@@ -350,7 +352,7 @@ export const ExperimentalRoutes = lazy(() =>
         const hasMore = sessions.length > limit
         const list = hasMore ? sessions.slice(0, limit) : sessions
         if (hasMore && list.length > 0) {
-          c.header("x-next-cursor", String(list[list.length - 1].time.updated))
+          c.header("x-next-cursor", String(list[list.length - 1]!.time.updated))
         }
         return c.json(list)
       },

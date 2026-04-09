@@ -7,7 +7,7 @@ import { Truncate } from "./truncate"
 import { Agent } from "@/agent/agent"
 
 export namespace Tool {
-  interface Metadata {
+  export interface Metadata {
     [key: string]: any
   }
 

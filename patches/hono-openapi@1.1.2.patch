@@ -1,0 +1,36 @@
+diff --git a/dist/index.d.cts b/dist/index.d.cts
+index 0f49b720b0b8c827fef52a2982fb194e98bc0c50..bb34d041de0d5190c1e932ada4557806887ebc95 100644
+--- a/dist/index.d.cts
++++ b/dist/index.d.cts
+@@ -9,11 +9,11 @@ import { StatusCode } from 'hono/utils/http-status';
+ import { JSONSchema7 } from 'json-schema';
+ 
+ /** The Standard Schema interface. */
+-interface StandardSchemaV1<Input = unknown, Output = Input> {
++export interface StandardSchemaV1<Input = unknown, Output = Input> {
+     /** The Standard Schema properties. */
+     readonly "~standard": StandardSchemaV1.Props<Input, Output>;
+ }
+-declare namespace StandardSchemaV1 {
++export declare namespace StandardSchemaV1 {
+     /** The Standard Schema properties interface. */
+     export interface Props<Input = unknown, Output = Input> {
+         /** The version number of the standard. */
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 0f49b720b0b8c827fef52a2982fb194e98bc0c50..bb34d041de0d5190c1e932ada4557806887ebc95 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -9,11 +9,11 @@ import { StatusCode } from 'hono/utils/http-status';
+ import { JSONSchema7 } from 'json-schema';
+ 
+ /** The Standard Schema interface. */
+-interface StandardSchemaV1<Input = unknown, Output = Input> {
++export interface StandardSchemaV1<Input = unknown, Output = Input> {
+     /** The Standard Schema properties. */
+     readonly "~standard": StandardSchemaV1.Props<Input, Output>;
+ }
+-declare namespace StandardSchemaV1 {
++export declare namespace StandardSchemaV1 {
+     /** The Standard Schema properties interface. */
+     export interface Props<Input = unknown, Output = Input> {
+         /** The version number of the standard. */

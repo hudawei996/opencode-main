@@ -18,6 +18,12 @@
         "transform": "@effect/language-service/transform",
         "namespaceImportPackages": ["effect", "@effect/*"]
       }
-    ]
-  }
+    ],
+    "outDir": "dist/types",
+    "rootDir": ".",
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true
+  },
+  "include": ["src"]
 }
