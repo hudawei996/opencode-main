@@ -27,6 +27,7 @@ import { Snapshot } from "@/snapshot"
 import { ProjectID } from "../project/schema"
 import { WorkspaceID } from "../control-plane/schema"
 import { SessionID, MessageID, PartID } from "./schema"
+import { Filesystem } from "@/util/filesystem"
 
 import type { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "@/provider/schema"
@@ -314,6 +315,7 @@ export namespace Session {
 
   export interface Interface {
     readonly create: (input?: {
+      directory?: string
       parentID?: SessionID
       title?: string
       permission?: Permission.Ruleset
@@ -493,12 +495,13 @@ export namespace Session {
         }).pipe(Effect.withSpan("Session.updatePart"))
 
       const create = Effect.fn("Session.create")(function* (input?: {
+        directory?: string
         parentID?: SessionID
         title?: string
         permission?: Permission.Ruleset
         workspaceID?: WorkspaceID
       }) {
-        const directory = yield* InstanceState.directory
+        const directory = input?.directory ? Filesystem.resolve(input.directory) : yield* InstanceState.directory
         return yield* createNext({
           parentID: input?.parentID,
           directory,
@@ -688,6 +691,7 @@ export namespace Session {
   export const create = fn(
     z
       .object({
+        directory: z.string().optional(),
         parentID: SessionID.zod.optional(),
         title: z.string().optional(),
         permission: Info.shape.permission,

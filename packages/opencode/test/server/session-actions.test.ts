@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises"
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
@@ -5,6 +6,7 @@ import { Session } from "../../src/session"
 import { ModelID, ProviderID } from "../../src/provider/schema"
 import { MessageID, PartID, type SessionID } from "../../src/session/schema"
 import { SessionPrompt } from "../../src/session/prompt"
+import { Filesystem } from "../../src/util/filesystem"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
 
@@ -35,6 +37,30 @@ async function user(sessionID: SessionID, text: string) {
 }
 
 describe("session action routes", () => {
+  test("create route accepts directory query param", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const dir = `${tmp.path}/custom-worktree`
+    await mkdir(dir, { recursive: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const app = Server.Default()
+
+        const res = await app.request(`/session?directory=${encodeURIComponent(dir)}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: "custom-dir" }),
+        })
+
+        expect(res.status).toBe(200)
+        const session = (await res.json()) as Session.Info
+        expect(session.directory).toBe(Filesystem.resolve(dir))
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
   test("abort route calls SessionPrompt.cancel", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
