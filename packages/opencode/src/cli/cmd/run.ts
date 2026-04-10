@@ -634,22 +634,24 @@ export const RunCommand = effectCmd({
           process.exit(1)
         })
 
+        const resolved = await Provider.resolveSelection(args.model, args.variant)
+
         if (args.command) {
           await sdk.session.command({
             sessionID,
             agent,
-            model: args.model,
+            model: resolved.model,
             command: args.command,
             arguments: message,
-            variant: args.variant,
+            variant: resolved.variant,
           })
         } else {
-          const model = args.model ? Provider.parseModel(args.model) : undefined
+          const model = resolved.model ? Provider.parseModel(resolved.model) : undefined
           await sdk.session.prompt({
             sessionID,
             agent,
             model,
-            variant: args.variant,
+            variant: resolved.variant,
             parts: [...files, { type: "text", text: message }],
           })
         }
