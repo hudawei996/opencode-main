@@ -4,7 +4,7 @@ import { proxy } from "hono/proxy"
 import type { UpgradeWebSocket } from "hono/ws"
 import z from "zod"
 import { createHash } from "node:crypto"
-import * as fs from "node:fs/promises"
+import { Filesystem } from "../util/filesystem"
 import { Log } from "../util/log"
 import { Format } from "../format"
 import { TuiRoutes } from "./routes/tui"
@@ -29,7 +29,6 @@ import { ExperimentalRoutes } from "./routes/experimental"
 import { ProviderRoutes } from "./routes/provider"
 import { EventRoutes } from "./routes/event"
 import { errorHandler } from "./middleware"
-import { getMimeType } from "hono/utils/mime"
 
 const log = Log.create({ service: "server" })
 
@@ -112,11 +111,11 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket, app: Hono = new Hono()
       }),
       async (c) => {
         return c.json({
-          home: Global.Path.home,
-          state: Global.Path.state,
-          config: Global.Path.config,
-          worktree: Instance.worktree,
-          directory: Instance.directory,
+          home: Filesystem.posixPath(Global.Path.home),
+          state: Filesystem.posixPath(Global.Path.state),
+          config: Filesystem.posixPath(Global.Path.config),
+          worktree: Filesystem.posixPath(Instance.worktree),
+          directory: Filesystem.posixPath(Instance.directory),
         })
       },
     )
@@ -287,14 +286,13 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket, app: Hono = new Hono()
       if (embeddedWebUI) {
         const match = embeddedWebUI[path.replace(/^\//, "")] ?? embeddedWebUI["index.html"] ?? null
         if (!match) return c.json({ error: "Not Found" }, 404)
-
-        if (await fs.exists(match)) {
-          const mime = getMimeType(match) ?? "text/plain"
-          c.header("Content-Type", mime)
-          if (mime.startsWith("text/html")) {
+        const file = Bun.file(match)
+        if (await file.exists()) {
+          c.header("Content-Type", file.type)
+          if (file.type.startsWith("text/html")) {
             c.header("Content-Security-Policy", DEFAULT_CSP)
           }
-          return c.body(new Uint8Array(await fs.readFile(match)))
+          return c.body(await file.arrayBuffer())
         } else {
           return c.json({ error: "Not Found" }, 404)
         }
