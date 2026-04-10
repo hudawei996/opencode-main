@@ -841,7 +841,7 @@ export function Prompt(props: PromptProps) {
   })
 
   const spinnerDef = createMemo(() => {
-    const color = local.agent.color(local.agent.current().name)
+    const color = local.agent.color(lastUserMessage()?.agent ?? local.agent.current().name)
     return {
       frames: createFrames({
         color,
