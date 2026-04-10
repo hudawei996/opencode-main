@@ -22,40 +22,56 @@ const ITERATIONS = 50
 
 const getHeapMB = () => {
   Bun.gc(true)
+  Bun.sleepSync(25)
   return process.memoryUsage().heapUsed / MB
 }
 
 describe("memory: abort controller leak", () => {
-  test("webfetch does not leak memory over many invocations", async () => {
-    await Instance.provide({
-      directory: projectRoot,
-      fn: async () => {
-        const tool = await WebFetchTool.init()
+  test("webfetch clears abort timers over many invocations", async () => {
+    type TimerID = number
 
-        // Warm up
-        await tool.execute({ url: "https://example.com", format: "text" }, ctx).catch(() => {})
+    const prevFetch = globalThis.fetch
+    const prevSetTimeout = globalThis.setTimeout
+    const prevClearTimeout = globalThis.clearTimeout
+    const active = new Set<TimerID>()
 
-        Bun.gc(true)
-        const baseline = getHeapMB()
+    globalThis.fetch = (async () =>
+      new Response("hello from webfetch", {
+        status: 200,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+        },
+      })) as unknown as typeof fetch
+    globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: any[]) => {
+      const id = prevSetTimeout(handler, timeout, ...args) as unknown as TimerID
+      active.add(id)
+      return id as unknown as ReturnType<typeof setTimeout>
+    }) as unknown as typeof setTimeout
+    globalThis.clearTimeout = ((id?: Parameters<typeof clearTimeout>[0]) => {
+      if (id !== undefined) active.delete(id as unknown as TimerID)
+      return prevClearTimeout(id)
+    }) as unknown as typeof clearTimeout
 
-        // Run many fetches
-        for (let i = 0; i < ITERATIONS; i++) {
+    try {
+      await Instance.provide({
+        directory: projectRoot,
+        fn: async () => {
+          const tool = await WebFetchTool.init()
+
           await tool.execute({ url: "https://example.com", format: "text" }, ctx).catch(() => {})
-        }
 
-        Bun.gc(true)
-        const after = getHeapMB()
-        const growth = after - baseline
+          for (let i = 0; i < ITERATIONS; i++) {
+            await tool.execute({ url: "https://example.com", format: "text" }, ctx).catch(() => {})
+          }
 
-        console.log(`Baseline: ${baseline.toFixed(2)} MB`)
-        console.log(`After ${ITERATIONS} fetches: ${after.toFixed(2)} MB`)
-        console.log(`Growth: ${growth.toFixed(2)} MB`)
-
-        // Memory growth should be minimal - less than 1MB per 10 requests
-        // With the old closure pattern, this would grow ~0.5MB per request
-        expect(growth).toBeLessThan(ITERATIONS / 10)
-      },
-    })
+          expect(active.size).toBe(0)
+        },
+      })
+    } finally {
+      globalThis.fetch = prevFetch
+      globalThis.setTimeout = prevSetTimeout
+      globalThis.clearTimeout = prevClearTimeout
+    }
   }, 60000)
 
   test("compare closure vs bind pattern directly", async () => {
