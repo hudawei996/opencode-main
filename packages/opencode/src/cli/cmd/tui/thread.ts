@@ -41,7 +41,7 @@ function createWorkerFetch(client: RpcClient): typeof fetch {
   return fn as typeof fetch
 }
 
-function createEventSource(client: RpcClient): EventSource {
+export function createEventSource(client: RpcClient): EventSource {
   return {
     subscribe: async (handler) => {
       return client.on<GlobalEvent>("global.event", (e) => {
@@ -102,12 +102,8 @@ export const TuiThreadCommand = cmd({
         describe: "agent to use",
       }),
   handler: async (args) => {
-    // Keep ENABLE_PROCESSED_INPUT cleared even if other code flips it.
-    // (Important when running under `bun run` wrappers on Windows.)
     const unguard = win32InstallCtrlCGuard()
     try {
-      // Must be the very first thing — disables CTRL_C_EVENT before any Worker
-      // spawn or async work so the OS cannot kill the process group.
       win32DisableProcessedInput()
 
       if (args.fork && !args.continue && !args.session) {
@@ -116,8 +112,6 @@ export const TuiThreadCommand = cmd({
         return
       }
 
-      // Resolve relative --project paths from PWD, then use the real cwd after
-      // chdir so the thread and worker share the same directory key.
       const root = Filesystem.resolve(process.env.PWD ?? process.cwd())
       const next = args.project
         ? Filesystem.resolve(path.isAbsolute(args.project) ? args.project : path.join(root, args.project))

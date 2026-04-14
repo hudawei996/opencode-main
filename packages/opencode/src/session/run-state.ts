@@ -1,3 +1,4 @@
+import { ConfigReload } from "@/config/reload"
 import { InstanceState } from "@/effect/instance-state"
 import { Runner } from "@/effect/runner"
 import { Effect, Layer, Scope, Context } from "effect"
@@ -57,8 +58,13 @@ export namespace SessionRunState {
           onIdle: Effect.gen(function* () {
             data.runners.delete(sessionID)
             yield* status.set(sessionID, { type: "idle" })
+            yield* Effect.sync(() => ConfigReload.finish(sessionID))
+            yield* Effect.promise(() => ConfigReload.check())
           }),
-          onBusy: status.set(sessionID, { type: "busy" }),
+          onBusy: Effect.gen(function* () {
+            yield* Effect.sync(() => ConfigReload.start(sessionID))
+            yield* status.set(sessionID, { type: "busy" })
+          }),
           onInterrupt,
           busy: () => {
             throw new Session.BusyError(sessionID)
@@ -78,7 +84,9 @@ export namespace SessionRunState {
         const data = yield* InstanceState.get(state)
         const existing = data.runners.get(sessionID)
         if (!existing || !existing.busy) {
+          yield* Effect.sync(() => ConfigReload.finish(sessionID))
           yield* status.set(sessionID, { type: "idle" })
+          yield* Effect.promise(() => ConfigReload.check())
           return
         }
         yield* existing.cancel

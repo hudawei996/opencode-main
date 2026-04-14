@@ -332,6 +332,11 @@ export namespace SessionProcessor {
 
             case "tool-result": {
               yield* completeToolCall(value.toolCallId, value.output)
+              // Tool requested session stop (e.g. reload_config)
+              if (value.output.stopSession) {
+                log.info("tool requested session stop", { toolCallId: value.toolCallId })
+                ctx.blocked = true
+              }
               return
             }
 

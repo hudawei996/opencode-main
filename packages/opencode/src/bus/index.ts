@@ -15,6 +15,7 @@ export namespace Bus {
     "server.instance.disposed",
     z.object({
       directory: z.string(),
+      reason: z.string().optional(),
     }),
   )
 

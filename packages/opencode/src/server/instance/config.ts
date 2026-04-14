@@ -9,6 +9,7 @@ import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
 import { AppRuntime } from "../../effect/app-runtime"
 import { Effect } from "effect"
+import { ConfigReload } from "../../config/reload"
 
 const log = Log.create({ service: "server" })
 
@@ -95,5 +96,66 @@ export const ConfigRoutes = lazy(() =>
           default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
         })
       },
-    ),
+    )
+    .post(
+      "/reload",
+      describeRoute({
+        summary: "Reload configuration",
+        description:
+          "Reload all configuration files (opencode.jsonc, .opencode/) and plugins, and restart all instances without restarting the TUI.",
+        operationId: "config.reload",
+        responses: {
+          200: {
+            description: "Configuration reloaded successfully",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    success: z.boolean(),
+                    immediate: z.boolean(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const result = await ConfigReload.request()
+        return c.json({ success: true, immediate: result.immediate })
+      },
+    )
+    .post(
+      "/bootstrap-complete",
+      describeRoute({
+        summary: "Signal TUI bootstrap complete",
+        description:
+          "Called by the TUI after its non-blocking bootstrap phase finishes. " +
+          "Releases the tui-bootstrap blocker so any pending reload can proceed.",
+        operationId: "config.bootstrapComplete",
+        responses: {
+          200: {
+            description: "Blocker released",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ success: z.boolean() })),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const rawCycle = c.req.query("cycle")
+        if (rawCycle != null) {
+          const cycle = Number(rawCycle)
+          const current = ConfigReload.getBootstrapCycle()
+          if (cycle !== current) {
+            // Stale POST from a previous bootstrap cycle. Ignore it.
+            return c.json({ success: false })
+          }
+        }
+        ConfigReload.finishBlocker("tui-bootstrap")
+        return c.json({ success: true })
+      },
+    )
 )

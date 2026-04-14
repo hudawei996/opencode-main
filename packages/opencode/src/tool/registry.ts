@@ -12,6 +12,7 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
+import { ReloadTool } from "./reload"
 import { Tool } from "./tool"
 import { Config } from "../config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@opencode-ai/plugin"
@@ -121,6 +122,7 @@ export namespace ToolRegistry {
       const greptool = yield* GrepTool
       const patchtool = yield* ApplyPatchTool
       const skilltool = yield* SkillTool
+      const reload = yield* ReloadTool
       const agent = yield* Agent.Service
 
       const state = yield* InstanceState.make<State>(
@@ -199,6 +201,7 @@ export namespace ToolRegistry {
             question: Tool.init(question),
             lsp: Tool.init(lsptool),
             plan: Tool.init(plan),
+            reload: Tool.init(reload),
           })
 
           return {
@@ -219,6 +222,7 @@ export namespace ToolRegistry {
               tool.code,
               tool.skill,
               tool.patch,
+              tool.reload,
               ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [tool.lsp] : []),
               ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [tool.plan] : []),
             ],

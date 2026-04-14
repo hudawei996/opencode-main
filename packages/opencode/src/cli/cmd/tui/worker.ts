@@ -35,7 +35,6 @@ process.on("uncaughtException", (e) => {
   })
 })
 
-// Subscribe to global events and forward them via RPC
 GlobalBus.on("event", (event) => {
   Rpc.emit("global.event", event)
 })

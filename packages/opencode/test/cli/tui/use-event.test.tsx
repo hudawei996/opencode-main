@@ -41,6 +41,13 @@ function update(version: string): Event {
   }
 }
 
+function reloadDone(): Event {
+  return {
+    type: "config.reload.done",
+    properties: {},
+  }
+}
+
 function createSource() {
   let fn: ((event: GlobalEvent) => void) | undefined
 
@@ -168,6 +175,21 @@ describe("useEvent", () => {
       await wait(() => seen.length === 1)
 
       expect(seen).toEqual([update("1.2.3")])
+    } finally {
+      app.renderer.destroy()
+    }
+  })
+
+  test("delivers global reload events even when a workspace is active", async () => {
+    const { app, emit, project, seen } = await mount()
+
+    try {
+      project.workspace.set("ws_a")
+      emit(event(reloadDone(), { directory: "global" }))
+
+      await wait(() => seen.length === 1)
+
+      expect(seen).toEqual([reloadDone()])
     } finally {
       app.renderer.destroy()
     }
