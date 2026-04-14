@@ -1,4 +1,5 @@
 import { Cause, Deferred, Effect, Exit, Fiber, Schema, Scope, SynchronizedRef } from "effect"
+import { Log } from "../util/log"
 
 export interface Runner<A, E = never> {
   readonly state: Runner.State<A, E>
@@ -9,6 +10,8 @@ export interface Runner<A, E = never> {
 }
 
 export namespace Runner {
+  const log = Log.create({ service: "runner" })
+
   export class Cancelled extends Schema.TaggedErrorClass<Cancelled>()("RunnerCancelled", {}) {}
 
   interface RunHandle<A, E> {
@@ -61,7 +64,10 @@ export namespace Runner {
         : Deferred.done(done, exit).pipe(Effect.asVoid)
 
     const idleIfCurrent = () =>
-      SynchronizedRef.modify(ref, (st) => [st._tag === "Idle" ? idle : Effect.void, st] as const).pipe(Effect.flatten)
+      SynchronizedRef.modify(ref, (st) => {
+        log.info("idleIfCurrent", { state: st._tag })
+        return [st._tag === "Idle" ? idle : Effect.void, st] as const
+      }).pipe(Effect.flatten)
 
     const finishRun = (id: number, done: Deferred.Deferred<A, E | Cancelled>, exit: Exit.Exit<A, E>) =>
       SynchronizedRef.modify(
@@ -119,6 +125,7 @@ export namespace Runner {
             }
             case "Idle": {
               const done = yield* Deferred.make<A, E | Cancelled>()
+              yield* busy
               const run = yield* startRun(work, done)
               return [Deferred.await(done), { _tag: "Running", run }] as const
             }
@@ -161,14 +168,17 @@ export namespace Runner {
       ).pipe(Effect.flatten)
 
     const cancel = SynchronizedRef.modify(ref, (st) => {
+      log.info("cancel", { state: st._tag })
       switch (st._tag) {
         case "Idle":
           return [Effect.void, st] as const
         case "Running":
           return [
             Effect.gen(function* () {
+              log.info("cancel interrupt running", { id: st.run.id })
               yield* Fiber.interrupt(st.run.fiber)
               yield* Deferred.await(st.run.done).pipe(Effect.exit, Effect.asVoid)
+              log.info("cancel running completed", { id: st.run.id })
               yield* idleIfCurrent()
             }),
             { _tag: "Idle" } as const,
@@ -176,7 +186,9 @@ export namespace Runner {
         case "Shell":
           return [
             Effect.gen(function* () {
+              log.info("cancel stop shell", { id: st.shell.id })
               yield* stopShell(st.shell)
+              log.info("cancel shell completed", { id: st.shell.id })
               yield* idleIfCurrent()
             }),
             { _tag: "Idle" } as const,
@@ -184,8 +196,10 @@ export namespace Runner {
         case "ShellThenRun":
           return [
             Effect.gen(function* () {
+              log.info("cancel shell then run", { shellID: st.shell.id, runID: st.run.id })
               yield* Deferred.fail(st.run.done, new Cancelled()).pipe(Effect.asVoid)
               yield* stopShell(st.shell)
+              log.info("cancel shell then run completed", { shellID: st.shell.id, runID: st.run.id })
               yield* idleIfCurrent()
             }),
             { _tag: "Idle" } as const,

@@ -37,6 +37,7 @@ export type EventServerInstanceDisposed = {
   type: "server.instance.disposed"
   properties: {
     directory: string
+    reason?: string
   }
 }
 
@@ -53,7 +54,6 @@ export type EventInstallationUpdateAvailable = {
     version: string
   }
 }
-
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
@@ -357,6 +357,28 @@ export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
     sessionID: string
+  }
+}
+
+export type EventConfigReloadPending = {
+  type: "config.reload.pending"
+  properties: {
+    pending: boolean
+  }
+}
+
+export type EventConfigReloadExecuting = {
+  type: "config.reload.executing"
+  properties: {
+    executing: boolean
+    bootstrapCycle?: number
+  }
+}
+
+export type EventConfigReloadDone = {
+  type: "config.reload.done"
+  properties: {
+    [key: string]: unknown
   }
 }
 
@@ -1115,6 +1137,9 @@ export type GlobalEvent = {
     | EventSessionStatus
     | EventSessionIdle
     | EventSessionCompacted
+    | EventConfigReloadPending
+    | EventConfigReloadExecuting
+    | EventConfigReloadDone
     | EventTuiPromptAppend
     | EventTuiCommandExecute
     | EventTuiToastShow
@@ -2027,6 +2052,9 @@ export type Event =
   | EventSessionStatus
   | EventSessionIdle
   | EventSessionCompacted
+  | EventConfigReloadPending
+  | EventConfigReloadExecuting
+  | EventConfigReloadDone
   | EventTuiPromptAppend
   | EventTuiCommandExecute
   | EventTuiToastShow
@@ -2806,6 +2834,28 @@ export type ExperimentalConsoleSwitchOrgResponses = {
 
 export type ExperimentalConsoleSwitchOrgResponse =
   ExperimentalConsoleSwitchOrgResponses[keyof ExperimentalConsoleSwitchOrgResponses]
+
+export type ConfigReloadData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/config/reload"
+}
+
+export type ConfigReloadResponses = {
+  /**
+   * Configuration reloaded successfully
+   */
+  200: {
+    success: boolean
+    immediate: boolean
+  }
+}
+
+export type ConfigReloadResponse = ConfigReloadResponses[keyof ConfigReloadResponses]
 
 export type ToolIdsData = {
   body?: never

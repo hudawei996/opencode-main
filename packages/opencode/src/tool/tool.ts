@@ -30,6 +30,7 @@ export namespace Tool {
     title: string
     metadata: M
     output: string
+    stopSession?: boolean
     attachments?: Omit<MessageV2.FilePart, "id" | "sessionID" | "messageID">[]
   }
 

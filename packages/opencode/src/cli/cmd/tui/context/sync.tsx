@@ -75,6 +75,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       }
       formatter: FormatterStatus[]
       vcs: VcsInfo | undefined
+      reloadPending: boolean
+      reloading: boolean
     }>({
       provider_next: {
         all: [],
@@ -102,15 +104,29 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       mcp_resource: {},
       formatter: [],
       vcs: undefined,
+      reloadPending: false,
+      reloading: false,
     })
 
     const event = useEvent()
     const project = useProject()
     const sdk = useSDK()
+    /** Tracks the current bootstrap cycle from the worker's ConfigReload.
+     *  Sent back in the bootstrap-complete POST to reject stale calls. */
+    let bootstrapCycle = 0
 
     event.subscribe((event) => {
       switch (event.type) {
         case "server.instance.disposed":
+          bootstrap()
+          break
+        case "server.connected":
+          if (event.properties.bootstrapCycle != null) {
+            bootstrapCycle = Number(event.properties.bootstrapCycle)
+          }
+          if (store.reloading) {
+            setStore("reloading", false)
+          }
           bootstrap()
           break
         case "permission.replied": {
@@ -344,6 +360,38 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           setStore("vcs", { branch: event.properties.branch })
           break
         }
+
+        case "config.reload.pending": {
+          setStore("reloadPending", event.properties.pending)
+          break
+        }
+
+        case "config.reload.executing": {
+          if (event.properties.bootstrapCycle != null) {
+            bootstrapCycle = Number(event.properties.bootstrapCycle)
+          }
+          setStore("reloading", event.properties.executing)
+          break
+        }
+
+        case "config.reload.done": {
+          setStore("reloading", false)
+          const resumeSessionID = event.properties.resumeSessionID as string | undefined
+          if (resumeSessionID) {
+            sdk.client.session
+              .prompt({
+                sessionID: resumeSessionID,
+                parts: [
+                  {
+                    type: "text",
+                    text: "Configuration has been reloaded successfully. Continue where you left off.",
+                  },
+                ],
+              })
+              .catch(() => {})
+          }
+          break
+        }
       }
     })
 
@@ -351,8 +399,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const args = useArgs()
 
     async function bootstrap() {
-      console.log("bootstrapping")
       const workspace = project.workspace.current()
+      Log.Default.debug("tui bootstrap start")
+      // Capture cycle at bootstrap start. If a reload fires while this
+      // bootstrap is running, the cycle increments and the stale
+      // bootstrap-complete POST will be rejected by the server.
+      const cycle = bootstrapCycle
       const start = Date.now() - 30 * 24 * 60 * 60 * 1000
       const sessionListPromise = sdk.client.session
         .list({ start: start })
@@ -414,6 +466,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
         .then(() => {
           if (store.status !== "complete") setStore("status", "partial")
+          // Signal the worker that bootstrap is done so any pending
+          // reload can proceed. The blocking phase (providers, agents,
+          // config) is sufficient for sessions to resume. MCP and other
+          // non-blocking work continues in the background.
+          sdk.fetch(`${sdk.url}/config/bootstrap-complete?cycle=${cycle}`, { method: "POST" }).catch(() => {})
           // non-blocking
           Promise.all([
             ...(args.continue ? [] : [sessionListPromise.then((sessions) => setStore("session", reconcile(sessions)))]),
@@ -436,6 +493,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           })
         })
         .catch(async (e) => {
+          // Release the blocker even on failure so reload isn't stuck.
+          sdk.fetch(`${sdk.url}/config/bootstrap-complete?cycle=${cycle}`, { method: "POST" }).catch(() => {})
           Log.Default.error("tui bootstrap failed", {
             error: e instanceof Error ? e.message : String(e),
             name: e instanceof Error ? e.name : undefined,

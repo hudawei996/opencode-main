@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
+import type { GlobalEvent } from "@opencode-ai/sdk/v2"
 import fs from "fs/promises"
 import path from "path"
 import { tmpdir } from "../../fixture/fixture"
 import * as App from "../../../src/cli/cmd/tui/app"
+import { createEventSource, TuiThreadCommand } from "../../../src/cli/cmd/tui/thread"
 import { Rpc } from "../../../src/util/rpc"
 import { UI } from "../../../src/cli/ui"
 import * as Timeout from "../../../src/util/timeout"
@@ -18,11 +20,6 @@ const seen = {
 }
 
 function setup() {
-  // Intentionally avoid mock.module() here: Bun keeps module overrides in cache
-  // and mock.restore() does not reset mock.module values. If this switches back
-  // to module mocks, later suites can see mocked @/config/tui and fail (e.g.
-  // plugin-loader tests expecting real TuiConfig.waitForDependencies). See:
-  // https://github.com/oven-sh/bun/issues/7823 and #12823.
   spyOn(App, "tui").mockImplementation(async (input) => {
     if (input.directory) seen.tui.push(input.directory)
     throw stop
@@ -55,7 +52,6 @@ describe("tui thread", () => {
   })
 
   async function call(project?: string) {
-    const { TuiThreadCommand } = await import("../../../src/cli/cmd/tui/thread")
     const args: Parameters<NonNullable<typeof TuiThreadCommand.handler>>[0] = {
       _: [],
       $0: "opencode",
@@ -124,5 +120,45 @@ describe("tui thread", () => {
 
   test("uses the real cwd after resolving a relative project from PWD", async () => {
     await check(".")
+  })
+})
+
+describe("createEventSource", () => {
+  test("forwards global events through the worker transport", async () => {
+    const handlers = new Map<string, (data: any) => void>()
+    const seen: GlobalEvent[] = []
+    const client = {
+      on(event: string, handler: (data: any) => void) {
+        handlers.set(event, handler)
+        return () => {
+          handlers.delete(event)
+        }
+      },
+    }
+
+    const source = createEventSource(client as any)
+    const unsub = await source.subscribe((event) => {
+      seen.push(event)
+    })
+
+    handlers.get("global.event")?.({
+      directory: "global",
+      payload: {
+        type: "server.connected",
+        properties: { bootstrapCycle: 1 },
+      },
+    } satisfies GlobalEvent)
+
+    expect(seen).toEqual([
+      {
+        directory: "global",
+        payload: {
+          type: "server.connected",
+          properties: { bootstrapCycle: 1 },
+        },
+      },
+    ])
+
+    unsub()
   })
 })

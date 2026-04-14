@@ -681,22 +681,30 @@ export function Prompt(props: PromptProps) {
       const [command, ...firstLineArgs] = firstLine.split(" ")
       const restOfInput = firstLineEnd === -1 ? "" : inputText.slice(firstLineEnd + 1)
       const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
+      const commandName = command.slice(1)
 
-      sdk.client.session.command({
-        sessionID,
-        command: command.slice(1),
-        arguments: args,
-        agent: local.agent.current().name,
-        model: `${selectedModel.providerID}/${selectedModel.modelID}`,
-        messageID,
-        variant,
-        parts: nonTextParts
-          .filter((x) => x.type === "file")
-          .map((x) => ({
-            id: PartID.ascending(),
-            ...x,
-          })),
-      })
+      // Handle reload command specially - it doesn't need a session
+      if (commandName === "reload") {
+        sdk.client.config
+          .reload()
+          .catch(() => toast.error("Failed to reload configuration"))
+      } else {
+        sdk.client.session.command({
+          sessionID,
+          command: commandName,
+          arguments: args,
+          agent: local.agent.current().name,
+          model: `${selectedModel.providerID}/${selectedModel.modelID}`,
+          messageID,
+          variant,
+          parts: nonTextParts
+            .filter((x) => x.type === "file")
+            .map((x) => ({
+              id: PartID.ascending(),
+              ...x,
+            })),
+        })
+      }
     } else {
       sdk.client.session
         .prompt({
@@ -892,6 +900,12 @@ export function Prompt(props: PromptProps) {
         agentStyleId={agentStyleId}
         promptPartTypeId={() => promptPartTypeId}
       />
+      <Show when={sync.data.reloadPending}>
+        <box flexDirection="row" flexShrink={0} paddingLeft={3} gap={1} marginBottom={1}>
+          <text fg={theme.warning}>△</text>
+          <text fg={theme.warning}>Configuration reload pending...</text>
+        </box>
+      </Show>
       <box ref={(r) => (anchor = r)} visible={props.visible !== false}>
         <box
           border={["left"]}

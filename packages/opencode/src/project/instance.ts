@@ -21,6 +21,21 @@ const disposal = {
   all: undefined as Promise<void> | undefined,
 }
 
+function emit(input: { directory: string; project?: Project.Info; reason?: string }) {
+  GlobalBus.emit("event", {
+    directory: input.directory,
+    project: input.project?.id,
+    workspace: WorkspaceContext.workspaceID,
+    payload: {
+      type: "server.instance.disposed",
+      properties: {
+        directory: input.directory,
+        ...(input.reason ? { reason: input.reason } : {}),
+      },
+    },
+  })
+}
+
 function boot(input: { directory: string; init?: () => Promise<any>; worktree?: string; project?: Project.Info }) {
   return iife(async () => {
     const ctx =
@@ -123,40 +138,19 @@ export const Instance = {
     cache.delete(directory)
     const next = track(directory, boot({ ...input, directory }))
 
-    GlobalBus.emit("event", {
-      directory,
-      project: input.project?.id,
-      workspace: WorkspaceContext.workspaceID,
-      payload: {
-        type: "server.instance.disposed",
-        properties: {
-          directory,
-        },
-      },
-    })
+    emit({ directory, project: input.project })
 
     return await next
   },
-  async dispose() {
+  async dispose(reason?: string) {
     const directory = Instance.directory
     const project = Instance.project
-    Log.Default.info("disposing instance", { directory })
+    Log.Default.info("disposing instance", { directory, reason })
     await Promise.all([State.dispose(directory), disposeInstance(directory)])
     cache.delete(directory)
-
-    GlobalBus.emit("event", {
-      directory,
-      project: project.id,
-      workspace: WorkspaceContext.workspaceID,
-      payload: {
-        type: "server.instance.disposed",
-        properties: {
-          directory,
-        },
-      },
-    })
+    emit({ directory, project, reason })
   },
-  async disposeAll() {
+  async disposeAll(reason?: string) {
     if (disposal.all) return disposal.all
 
     disposal.all = iife(async () => {
@@ -178,7 +172,7 @@ export const Instance = {
         if (cache.get(key) !== value) continue
 
         await context.provide(ctx, async () => {
-          await Instance.dispose()
+          await Instance.dispose(reason)
         })
       }
     }).finally(() => {
