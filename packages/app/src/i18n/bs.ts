@@ -622,6 +622,7 @@ export const dict = {
   "settings.desktop.wsl.description": "Pokreni OpenCode server unutar WSL-a na Windowsu.",
 
   "settings.general.section.appearance": "Izgled",
+  "settings.general.section.input": "Unos",
   "settings.general.section.notifications": "Sistemske obavijesti",
   "settings.general.section.updates": "Ažuriranja",
   "settings.general.section.sounds": "Zvučni efekti",
@@ -638,6 +639,9 @@ export const dict = {
   "settings.general.row.theme.description": "Prilagodi temu OpenCode-a.",
   "settings.general.row.font.title": "Font za kod",
   "settings.general.row.font.description": "Prilagodi font koji se koristi u blokovima koda i terminalima",
+
+  "settings.general.row.sendWithModEnter.title": "Pošalji sa Ctrl+Enter",
+  "settings.general.row.sendWithModEnter.description": "Koristi Ctrl+Enter (ili Cmd+Enter na Mac) za slanje poruka umjesto Enter",
   "settings.general.row.uiFont.title": "UI font",
   "settings.general.row.uiFont.description": "Prilagodi font koji se koristi u cijelom interfejsu",
   "settings.general.row.followup.title": "Ponašanje nadovezivanja",

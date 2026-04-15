@@ -617,6 +617,7 @@ export const dict = {
   "settings.desktop.wsl.description": "在 Windows 的 WSL 环境中运行 OpenCode 服务器。",
 
   "settings.general.section.appearance": "外观",
+  "settings.general.section.input": "输入",
   "settings.general.section.notifications": "系统通知",
   "settings.general.section.updates": "更新",
   "settings.general.section.sounds": "音效",
@@ -632,6 +633,9 @@ export const dict = {
   "settings.general.row.theme.description": "自定义 OpenCode 的主题。",
   "settings.general.row.font.title": "代码字体",
   "settings.general.row.font.description": "自定义代码块和终端使用的字体",
+
+  "settings.general.row.sendWithModEnter.title": "使用 Ctrl+Enter 发送",
+  "settings.general.row.sendWithModEnter.description": "使用 Ctrl+Enter(Mac 上为 Cmd+Enter)发送消息,而不是 Enter",
   "settings.general.row.uiFont.title": "界面字体",
   "settings.general.row.uiFont.description": "自定义整个界面使用的字体",
   "settings.general.row.followup.title": "跟进消息行为",

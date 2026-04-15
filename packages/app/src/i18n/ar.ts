@@ -551,6 +551,7 @@ export const dict = {
   "settings.desktop.wsl.title": "تكامل WSL",
   "settings.desktop.wsl.description": "تشغيل خادم OpenCode داخل WSL على Windows.",
   "settings.general.section.appearance": "المظهر",
+  "settings.general.section.input": "الإدخال",
   "settings.general.section.notifications": "إشعارات النظام",
   "settings.general.section.updates": "التحديثات",
   "settings.general.section.sounds": "المؤثرات الصوتية",
@@ -566,6 +567,9 @@ export const dict = {
   "settings.general.row.theme.description": "تخصيص سمة OpenCode.",
   "settings.general.row.font.title": "خط الكود",
   "settings.general.row.font.description": "خصّص الخط المستخدم في كتل التعليمات البرمجية والطرفيات",
+
+  "settings.general.row.sendWithModEnter.title": "إرسال باستخدام Ctrl+Enter",
+  "settings.general.row.sendWithModEnter.description": "استخدم Ctrl+Enter (أو Cmd+Enter على Mac) لإرسال الرسائل بدلاً من Enter",
   "settings.general.row.uiFont.title": "خط الواجهة",
   "settings.general.row.uiFont.description": "خصّص الخط المستخدم في الواجهة بأكملها",
   "settings.general.row.followup.title": "سلوك المتابعة",

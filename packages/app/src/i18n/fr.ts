@@ -565,6 +565,7 @@ export const dict = {
   "settings.desktop.wsl.title": "Intégration WSL",
   "settings.desktop.wsl.description": "Exécuter le serveur OpenCode dans WSL sur Windows.",
   "settings.general.section.appearance": "Apparence",
+  "settings.general.section.input": "Saisie",
   "settings.general.section.notifications": "Notifications système",
   "settings.general.section.updates": "Mises à jour",
   "settings.general.section.sounds": "Effets sonores",
@@ -580,6 +581,9 @@ export const dict = {
   "settings.general.row.theme.description": "Personnaliser le thème d'OpenCode.",
   "settings.general.row.font.title": "Police de code",
   "settings.general.row.font.description": "Personnaliser la police utilisée dans les blocs de code et les terminaux",
+
+  "settings.general.row.sendWithModEnter.title": "Envoyer avec Ctrl+Entrée",
+  "settings.general.row.sendWithModEnter.description": "Utilisez Ctrl+Entrée (ou Cmd+Entrée sur Mac) pour envoyer des messages à la place d'Entrée",
   "settings.general.row.uiFont.title": "Police de l'interface",
   "settings.general.row.uiFont.description": "Personnaliser la police utilisée dans toute l'interface",
   "settings.general.row.followup.title": "Comportement de suivi",

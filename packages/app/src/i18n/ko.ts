@@ -556,6 +556,7 @@ export const dict = {
   "settings.desktop.wsl.title": "WSL 통합",
   "settings.desktop.wsl.description": "Windows의 WSL 내부에서 OpenCode 서버를 실행합니다.",
   "settings.general.section.appearance": "모양",
+  "settings.general.section.input": "입력",
   "settings.general.section.notifications": "시스템 알림",
   "settings.general.section.updates": "업데이트",
   "settings.general.section.sounds": "효과음",
@@ -571,6 +572,9 @@ export const dict = {
   "settings.general.row.theme.description": "OpenCode 테마 사용자 지정",
   "settings.general.row.font.title": "코드 글꼴",
   "settings.general.row.font.description": "코드 블록과 터미널에 사용되는 글꼴을 사용자 지정",
+
+  "settings.general.row.sendWithModEnter.title": "Ctrl+Enter로 전송",
+  "settings.general.row.sendWithModEnter.description": "Enter 대신 Ctrl+Enter(Mac에서는 Cmd+Enter)를 사용하여 메시지를 전송합니다",
   "settings.general.row.uiFont.title": "UI 글꼴",
   "settings.general.row.uiFont.description": "인터페이스 전반에 사용되는 글꼴을 사용자 지정",
   "settings.general.row.followup.title": "후속 조치 동작",

@@ -617,6 +617,7 @@ export const dict = {
   "settings.desktop.wsl.description": "Kør OpenCode-serveren inde i WSL på Windows.",
 
   "settings.general.section.appearance": "Udseende",
+  "settings.general.section.input": "Input",
   "settings.general.section.notifications": "Systemmeddelelser",
   "settings.general.section.updates": "Opdateringer",
   "settings.general.section.sounds": "Lydeffekter",
@@ -633,6 +634,9 @@ export const dict = {
   "settings.general.row.theme.description": "Tilpas hvordan OpenCode er temabestemt.",
   "settings.general.row.font.title": "Kode-skrifttype",
   "settings.general.row.font.description": "Tilpas skrifttypen, der bruges i kodeblokke og terminaler",
+
+  "settings.general.row.sendWithModEnter.title": "Send med Ctrl+Enter",
+  "settings.general.row.sendWithModEnter.description": "Brug Ctrl+Enter (eller Cmd+Enter på Mac) til at sende beskeder i stedet for Enter",
   "settings.general.row.uiFont.title": "UI-skrifttype",
   "settings.general.row.uiFont.description": "Tilpas skrifttypen, der bruges i hele brugerfladen",
   "settings.general.row.followup.title": "Opfølgningsadfærd",
