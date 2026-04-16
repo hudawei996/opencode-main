@@ -399,7 +399,7 @@ export const getUsage = (input: { model: Provider.Model; usage: LanguageModelUsa
     input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000
       ? input.model.cost.experimentalOver200K
       : input.model.cost
-  return {
+  const result = {
     cost: safe(
       new Decimal(0)
         .add(new Decimal(tokens.input).mul(costInfo?.input ?? 0).div(1_000_000))
@@ -413,6 +413,13 @@ export const getUsage = (input: { model: Provider.Model; usage: LanguageModelUsa
     ),
     tokens,
   }
+  log.info("usage", {
+    input: tokens.input,
+    output: tokens.output,
+    cache_write: tokens.cache.write,
+    cache_read: tokens.cache.read,
+  })
+  return result
 }
 
 export class BusyError extends Error {
