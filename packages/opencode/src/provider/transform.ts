@@ -6,6 +6,9 @@ import type * as Provider from "./provider"
 import type * as ModelsDev from "./models"
 import { iife } from "@/util/iife"
 import { Flag } from "@opencode-ai/core/flag/flag"
+import { Log } from "@/util"
+
+const log = Log.create({ service: "transform" })
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
 
@@ -378,6 +381,12 @@ function applyCaching(msgs: ModelMessage[], model: Provider.Model, options?: Rec
 
     msg.providerOptions = mergeDeep(msg.providerOptions ?? {}, providerOptions)
   }
+
+  log.debug("cache points applied", {
+    messageCount: unique([...system, ...final]).length,
+    providerID: model.providerID,
+    ttl,
+  })
 
   return msgs
 }
