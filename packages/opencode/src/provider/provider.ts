@@ -794,6 +794,151 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
   }
 }
 
+  /**
+   * Populate the provider models dynamically using provider config
+   * Returns models or emty object if fails
+   */
+  async function populateDynamicModels(
+    providerID: string,
+    provider: any,
+    bridge: EffectBridge.Shape,
+  ): Promise<Record<string, Model>> {
+    const authSvc = await bridge.promise(
+      Effect.gen(function* () {
+        const svc = yield* Auth.Service
+        return svc
+      }),
+    )
+
+    const baseURL = provider.options?.baseURL
+    if (!baseURL) {
+      log.warn("Missing baseURL for dynamic model discovery", { providerID })
+      return {}
+    }
+
+    const key = provider.options?.apiKey
+    let authInfo: Auth.Info | undefined
+    if (key) {
+      authInfo = { type: "api" as const, key }
+    } else {
+      authInfo = await bridge.promise(authSvc.get(providerID))
+    }
+
+    const authType = authInfo?.type === "api" ? authInfo : null
+    const discoveredModels = await discoverModelsFromEndpoint(providerID, baseURL, authType)
+    return discoveredModels
+  }
+
+  /**
+   * Discover models from OpenAI-compatible /models endpoint
+   * Returns discovered models or empty object if discovery fails
+   */
+  async function discoverModelsFromEndpoint(
+    providerID: string,
+    baseURL: string,
+    auth: any | null,
+  ): Promise<Record<string, Model>> {
+    const models: Record<string, Model> = {}
+
+    try {
+      const headers: Record<string, string> = {}
+      if (auth?.type === "api" && auth.key) {
+        headers.Authorization = `Bearer ${auth.key}`
+      }
+
+      const response = await fetch(`${baseURL}/models`, {
+        headers,
+        signal: AbortSignal.timeout(10000),
+      })
+
+      if (!response.ok) {
+        log.warn("Failed to discover models", {
+          providerID,
+          baseURL,
+          status: response.status,
+        })
+        return models
+      }
+
+      const json = await response.json()
+
+      // Handle OpenAI format: { data: [{ id, ... }] }
+      const data = json.data
+      if (!Array.isArray(data)) {
+        log.warn("Unexpected /models response format", { providerID, format: typeof data })
+        return models
+      }
+
+      for (const modelData of data) {
+        const modelID = modelData.id
+        if (!modelID || typeof modelID !== "string") continue
+
+        // Extract context length from various possible fields
+        const contextLength =
+          modelData.max_context_length ??
+          modelData.context_length ??
+          modelData.contextWindow ??
+          modelData.max_tokens ??
+          131072
+
+        const context = Math.max(contextLength, 8192) // Floor at 8k for stability
+        const output = Math.min(Math.floor(context / 4), 16384)
+
+        // Check for small context warning
+        if (context < 32768) {
+          log.warn("Model has small context limit", {
+            providerID,
+            modelID,
+            context,
+          })
+        }
+
+        models[modelID] = {
+          id: ModelID.make(modelID),
+          providerID: ProviderID.make(providerID),
+          name: modelData.name ?? modelID,
+          family: modelData.family ?? "",
+          api: {
+            id: modelID,
+            url: baseURL,
+            npm: "@ai-sdk/openai-compatible",
+          },
+          capabilities: {
+            temperature: true,
+            reasoning: false,
+            attachment: true,
+            toolcall: true,
+            input: { text: true, audio: false, image: true, video: false, pdf: false },
+            output: { text: true, audio: false, image: false, video: false, pdf: false },
+            interleaved: false,
+          },
+          cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+          limit: { context, output },
+          headers: {},
+          options: {},
+          release_date: modelData.created ?? "",
+          status: modelData.status?.value ?? "active",
+        }
+      }
+
+      if (Object.keys(models).length > 0) {
+        log.info("Discovered models", {
+          providerID,
+          count: Object.keys(models).length,
+          models: Object.keys(models),
+        })
+      }
+    } catch (error) {
+      log.warn("Failed to discover models", {
+        providerID,
+        url: baseURL,
+        error: error,
+      })
+    }
+
+    return models
+  }
+
 export const Model = z
   .object({
     id: ModelID.zod,
@@ -1233,6 +1378,15 @@ const layer: Layer.Layer<
           if (provider.env) partial.env = provider.env
           if (provider.name) partial.name = provider.name
           if (provider.options) partial.options = provider.options
+          const hasExplicitModels = Object.keys(provider.models ?? {}).length > 0
+          if (!hasExplicitModels && provider.dynamicModelList) {
+            try {
+              partial.models = yield* Effect.promise(() => populateDynamicModels(providerID, provider, bridge))
+            } catch (err) {
+              log.warn("Dynamic model discovery failed", { providerID, error: err })
+              partial.models = {}
+            }
+          }
           mergeProvider(providerID, partial)
         }
 

@@ -806,6 +806,7 @@ export const Provider = z
     npm: z.string().optional(),
     whitelist: z.array(z.string()).optional(),
     blacklist: z.array(z.string()).optional(),
+    dynamicModelList: z.boolean().optional().describe("Enable automatic model discovery from OpenAI-compatible /models endpoint"),
     options: z
       .object({
         apiKey: z.string().optional(),
