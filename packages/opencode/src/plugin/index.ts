@@ -7,12 +7,12 @@ import type {
 } from "@opencode-ai/plugin"
 import { Config } from "../config"
 import { Bus } from "../bus"
+import { BusEvent } from "../bus/bus-event"
 import { Log } from "../util"
+import z from "zod"
 import { createOpencodeClient } from "@opencode-ai/sdk"
 import { Flag } from "../flag/flag"
 import { CodexAuthPlugin } from "./codex"
-import { Session } from "../session"
-import { NamedError } from "@opencode-ai/shared/util/error"
 import { CopilotAuthPlugin } from "./github-copilot/copilot"
 import { gitlabAuthPlugin as GitlabAuthPlugin } from "opencode-gitlab-auth"
 import { PoeAuthPlugin } from "opencode-poe-auth"
@@ -27,6 +27,15 @@ import { registerAdaptor } from "@/control-plane/adaptors"
 import type { WorkspaceAdaptor } from "@/control-plane/types"
 
 const log = Log.create({ service: "plugin" })
+
+export const Event = {
+  Error: BusEvent.define(
+    "plugin.error",
+    z.object({
+      message: z.string(),
+    }),
+  ),
+}
 
 type State = {
   hooks: Hooks[]
@@ -114,7 +123,7 @@ export const layer = Layer.effect(
         const bridge = yield* EffectBridge.make()
 
         function publishPluginError(message: string) {
-          bridge.fork(bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() }))
+          bridge.fork(bus.publish(Event.Error, { message }))
         }
 
         const { Server } = yield* Effect.promise(() => import("../server/server"))
@@ -218,15 +227,11 @@ export const layer = Layer.effect(
               return message
             },
           }).pipe(
-            Effect.catch(() => {
-              // TODO: make proper events for this
-              // bus.publish(Session.Event.Error, {
-              //   error: new NamedError.Unknown({
-              //     message: `Failed to load plugin ${load.spec}: ${message}`,
-              //   }).toObject(),
-              // })
-              return Effect.void
-            }),
+            Effect.catch((message) =>
+              bus.publish(Event.Error, {
+                message: `Failed to load plugin ${load.spec}: ${message}`,
+              }),
+            ),
           )
         }
 

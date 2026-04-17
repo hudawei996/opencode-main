@@ -109,6 +109,90 @@ export type EventMessagePartDelta = {
   }
 }
 
+export type EventPluginError = {
+  type: "plugin.error"
+  properties: {
+    message: string
+  }
+}
+
+export type QuestionOption = {
+  /**
+   * Display text (1-5 words, concise)
+   */
+  label: string
+  /**
+   * Explanation of choice
+   */
+  description: string
+}
+
+export type QuestionInfo = {
+  /**
+   * Complete question
+   */
+  question: string
+  /**
+   * Very short label (max 30 chars)
+   */
+  header: string
+  /**
+   * Available choices
+   */
+  options: Array<QuestionOption>
+  /**
+   * Allow selecting multiple choices
+   */
+  multiple?: boolean
+  /**
+   * Allow typing a custom answer (default: true)
+   */
+  custom?: boolean
+}
+
+export type QuestionTool = {
+  messageID: string
+  callID: string
+}
+
+export type QuestionRequest = {
+  id: string
+  sessionID: string
+  /**
+   * Questions to ask
+   */
+  questions: Array<QuestionInfo>
+  tool?: QuestionTool
+}
+
+export type EventQuestionAsked = {
+  type: "question.asked"
+  properties: QuestionRequest
+}
+
+export type QuestionAnswer = Array<string>
+
+export type QuestionReplied = {
+  sessionID: string
+  requestID: string
+  answers: Array<QuestionAnswer>
+}
+
+export type EventQuestionReplied = {
+  type: "question.replied"
+  properties: QuestionReplied
+}
+
+export type QuestionRejected = {
+  sessionID: string
+  requestID: string
+}
+
+export type EventQuestionRejected = {
+  type: "question.rejected"
+  properties: QuestionRejected
+}
+
 export type PermissionRequest = {
   id: string
   sessionID: string
@@ -228,83 +312,6 @@ export type EventSessionError = {
       | ContextOverflowError
       | ApiError
   }
-}
-
-export type QuestionOption = {
-  /**
-   * Display text (1-5 words, concise)
-   */
-  label: string
-  /**
-   * Explanation of choice
-   */
-  description: string
-}
-
-export type QuestionInfo = {
-  /**
-   * Complete question
-   */
-  question: string
-  /**
-   * Very short label (max 30 chars)
-   */
-  header: string
-  /**
-   * Available choices
-   */
-  options: Array<QuestionOption>
-  /**
-   * Allow selecting multiple choices
-   */
-  multiple?: boolean
-  /**
-   * Allow typing a custom answer (default: true)
-   */
-  custom?: boolean
-}
-
-export type QuestionTool = {
-  messageID: string
-  callID: string
-}
-
-export type QuestionRequest = {
-  id: string
-  sessionID: string
-  /**
-   * Questions to ask
-   */
-  questions: Array<QuestionInfo>
-  tool?: QuestionTool
-}
-
-export type EventQuestionAsked = {
-  type: "question.asked"
-  properties: QuestionRequest
-}
-
-export type QuestionAnswer = Array<string>
-
-export type QuestionReplied = {
-  sessionID: string
-  requestID: string
-  answers: Array<QuestionAnswer>
-}
-
-export type EventQuestionReplied = {
-  type: "question.replied"
-  properties: QuestionReplied
-}
-
-export type QuestionRejected = {
-  sessionID: string
-  requestID: string
-}
-
-export type EventQuestionRejected = {
-  type: "question.rejected"
-  properties: QuestionRejected
 }
 
 export type Todo = {
@@ -1120,13 +1127,14 @@ export type GlobalEvent = {
     | EventInstallationUpdated
     | EventInstallationUpdateAvailable
     | EventMessagePartDelta
+    | EventPluginError
+    | EventQuestionAsked
+    | EventQuestionReplied
+    | EventQuestionRejected
     | EventPermissionAsked
     | EventPermissionReplied
     | EventSessionDiff
     | EventSessionError
-    | EventQuestionAsked
-    | EventQuestionReplied
-    | EventQuestionRejected
     | EventTodoUpdated
     | EventSessionStatus
     | EventSessionIdle
@@ -2033,13 +2041,14 @@ export type Event =
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventMessagePartDelta
+  | EventPluginError
+  | EventQuestionAsked
+  | EventQuestionReplied
+  | EventQuestionRejected
   | EventPermissionAsked
   | EventPermissionReplied
   | EventSessionDiff
   | EventSessionError
-  | EventQuestionAsked
-  | EventQuestionReplied
-  | EventQuestionRejected
   | EventTodoUpdated
   | EventSessionStatus
   | EventSessionIdle
