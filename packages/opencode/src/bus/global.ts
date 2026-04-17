@@ -10,3 +10,4 @@ export type GlobalEvent = {
 export const GlobalBus = new EventEmitter<{
   event: [GlobalEvent]
 }>()
+GlobalBus.setMaxListeners(100)
