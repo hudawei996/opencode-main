@@ -93,7 +93,7 @@ afterEach(async () => {
   await clear(true)
 })
 
-async function writeManagedSettings(settings: object, filename = "opencode.json") {
+async function writeManagedSettings(settings: object, filename = "managed-settings.json") {
   await fs.mkdir(managedConfigDir, { recursive: true })
   await Filesystem.write(path.join(managedConfigDir, filename), JSON.stringify(settings))
 }
@@ -1487,6 +1487,439 @@ test("managed settings override project settings", async () => {
       const config = await load()
       expect(config.autoupdate).toBe(false)
       expect(config.disabled_providers).toEqual(["openai"])
+    },
+  })
+})
+
+test("mergeDeep semantics allow OPENCODE_PERMISSION to overwrite managed deny", async () => {
+  const { mergeDeep } = await import("remeda")
+
+  const managed = { bash: { "echo *": "deny" } }
+  const envvar = { bash: { "echo *": "allow" } }
+
+  const result = mergeDeep(managed, envvar) as Record<string, Record<string, string>>
+
+  expect(result.bash["echo *"]).toBe("allow")
+})
+
+test("managed instructions should replace user instructions, not union", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    instructions: ["/etc/opencode/managed-instructions.md"],
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        instructions: ["./user-instructions.md"],
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.instructions).toEqual(["/etc/opencode/managed-instructions.md"])
+    },
+  })
+})
+
+test("managed agents should replace user agents, not additively merge", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    agent: {
+      build: { permission: { bash: { "echo *": "deny" } } },
+    },
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        agent: {
+          escape: { permission: { bash: "allow" } },
+        },
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.agent?.escape).toBeUndefined()
+    },
+  })
+})
+
+test("drop-in fragments union enabled_providers with dedup", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    enabled_providers: [],
+  })
+
+  const dropinDir = path.join(managedConfigDir, "managed-settings.d")
+  await fs.mkdir(dropinDir, { recursive: true })
+  await Filesystem.write(
+    path.join(dropinDir, "10-providers.json"),
+    JSON.stringify({ $schema: "https://opencode.ai/config.json", enabled_providers: ["anthropic"] }),
+  )
+  await Filesystem.write(
+    path.join(dropinDir, "20-providers.json"),
+    JSON.stringify({ $schema: "https://opencode.ai/config.json", enabled_providers: ["openai", "anthropic"] }),
+  )
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.enabled_providers).toEqual(["anthropic", "openai"])
+    },
+  })
+})
+
+test("drop-in fragments union disabled_providers with dedup", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    disabled_providers: ["base"],
+  })
+
+  const dropinDir = path.join(managedConfigDir, "managed-settings.d")
+  await fs.mkdir(dropinDir, { recursive: true })
+  await Filesystem.write(
+    path.join(dropinDir, "10-providers.json"),
+    JSON.stringify({ $schema: "https://opencode.ai/config.json", disabled_providers: ["anthropic"] }),
+  )
+  await Filesystem.write(
+    path.join(dropinDir, "20-providers.json"),
+    JSON.stringify({ $schema: "https://opencode.ai/config.json", disabled_providers: ["openai", "anthropic"] }),
+  )
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.disabled_providers).toEqual(["base", "anthropic", "openai"])
+    },
+  })
+})
+
+test("managed mcp should replace user mcp, not additively merge", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    mcp: {
+      safe: { type: "local", command: ["safe"] },
+    },
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        mcp: {
+          evil: { type: "local", command: ["evil"] },
+        },
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.mcp?.evil).toBeUndefined()
+    },
+  })
+})
+
+test("managed commands should replace user commands, not additively merge", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    command: {
+      safe: { template: "do something safe" },
+    },
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        command: {
+          evil: { template: "do something bad" },
+        },
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.command?.evil).toBeUndefined()
+    },
+  })
+})
+
+test("managed providers should replace user providers, not additively merge", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    provider: {
+      "google-vertex": { models: { "gemini-2.5-pro": {} } },
+    },
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        provider: {
+          anthropic: { models: {} },
+        },
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.provider?.anthropic).toBeUndefined()
+    },
+  })
+})
+
+test("managed formatters should replace user formatters, not additively merge", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    formatter: { safe: { command: ["safe-fmt"] } },
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        formatter: { evil: { command: ["evil-fmt"] } },
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      const fmts = config.formatter as Record<string, unknown>
+      expect(fmts.evil).toBeUndefined()
+    },
+  })
+})
+
+test("managed lsp should replace user lsp, not additively merge", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    lsp: { safe: { command: ["safe-lsp"], extensions: [".ts"] } },
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        lsp: { evil: { command: ["evil-lsp"], extensions: [".txt"] } },
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      const lsps = config.lsp as Record<string, unknown>
+      expect(lsps.evil).toBeUndefined()
+    },
+  })
+})
+
+test("managed experimental should replace user experimental, not additively merge", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    experimental: { disable_paste_summary: true },
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        experimental: { batch_tool: true, openTelemetry: true },
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.experimental?.batch_tool).toBeUndefined()
+      expect(config.experimental?.openTelemetry).toBeUndefined()
+    },
+  })
+})
+
+test("managed skills should replace user skills, not additively merge", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    skills: { paths: ["/etc/opencode/skills/"] },
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        skills: { paths: ["./user-skills/"], urls: ["https://evil.com/skills/"] },
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.skills?.paths).toEqual(["/etc/opencode/skills/"])
+      expect(config.skills?.urls).toBeUndefined()
+    },
+  })
+})
+
+test("managed allowed_models should replace user allowed_models, not union", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    allowed_models: ["managed/model-a"],
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        allowed_models: ["user/model-b"],
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.allowed_models).toEqual(["managed/model-a"])
+    },
+  })
+})
+
+test("drop-in fragments union allowed_models with dedup", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    allowed_models: ["base/model"],
+  })
+
+  const dropinDir = path.join(managedConfigDir, "managed-settings.d")
+  await fs.mkdir(dropinDir, { recursive: true })
+  await Filesystem.write(
+    path.join(dropinDir, "10-models.json"),
+    JSON.stringify({ $schema: "https://opencode.ai/config.json", allowed_models: ["dropin/model-a"] }),
+  )
+  await Filesystem.write(
+    path.join(dropinDir, "20-models.json"),
+    JSON.stringify({ $schema: "https://opencode.ai/config.json", allowed_models: ["dropin/model-b", "base/model"] }),
+  )
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        model: "user/model",
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.allowed_models).toEqual(["base/model", "dropin/model-a", "dropin/model-b"])
+    },
+  })
+})
+
+test("managed user_agent_suffixes should replace user suffixes, not concatenate", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    user_agent_suffixes: ["managed-suffix"],
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        user_agent_suffixes: ["user-suffix"],
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.user_agent_suffixes).toEqual(["managed-suffix"])
+    },
+  })
+})
+
+test("drop-in fragments concatenate user_agent_suffixes", async () => {
+  await writeManagedSettings({
+    $schema: "https://opencode.ai/config.json",
+    user_agent_suffixes: ["base-suffix"],
+  })
+
+  const dropinDir = path.join(managedConfigDir, "managed-settings.d")
+  await fs.mkdir(dropinDir, { recursive: true })
+  await Filesystem.write(
+    path.join(dropinDir, "10-suffix.json"),
+    JSON.stringify({ $schema: "https://opencode.ai/config.json", user_agent_suffixes: ["frag-a"] }),
+  )
+  await Filesystem.write(
+    path.join(dropinDir, "20-suffix.json"),
+    JSON.stringify({ $schema: "https://opencode.ai/config.json", user_agent_suffixes: ["frag-b"] }),
+  )
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        model: "user/model",
+      })
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await load()
+      expect(config.user_agent_suffixes).toEqual(["base-suffix", "frag-a", "frag-b"])
     },
   })
 })
