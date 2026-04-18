@@ -19,12 +19,17 @@ export namespace AWS {
 
   export const sendEmail = fn(
     z.object({
+      from: z.string().optional(),
       to: z.string(),
       subject: z.string(),
       body: z.string(),
+      text: z.string().optional(),
+      html: z.string().optional(),
       replyTo: z.string().optional(),
     }),
     async (input) => {
+      const text = input.text ?? input.body
+      const html = input.html ?? input.body
       const res = await createClient().fetch("https://email.us-east-1.amazonaws.com/v2/email/outbound-emails", {
         method: "POST",
         headers: {
@@ -32,7 +37,7 @@ export namespace AWS {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          FromEmailAddress: `OpenCode Zen <contact@anoma.ly>`,
+          FromEmailAddress: input.from ?? "OpenCode Zen <contact@anoma.ly>",
           Destination: {
             ToAddresses: [input.to],
           },
@@ -46,11 +51,11 @@ export namespace AWS {
               Body: {
                 Text: {
                   Charset: "UTF-8",
-                  Data: input.body,
+                  Data: text,
                 },
                 Html: {
                   Charset: "UTF-8",
-                  Data: input.body,
+                  Data: html,
                 },
               },
             },
