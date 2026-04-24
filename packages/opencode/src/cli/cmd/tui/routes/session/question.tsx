@@ -92,7 +92,52 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
     setStore("selected", index)
   }
 
+  function saveCustomAnswerMulti(tab: number, text: string) {
+    const prev = store.custom[tab]
+
+    const inputs = [...store.custom]
+    inputs[tab] = text
+    setStore("custom", inputs)
+
+    const existing = store.answers[tab] ?? []
+    const next = [...existing]
+
+    if (prev && prev !== text) {
+      const oldIndex = next.indexOf(prev)
+      if (oldIndex !== -1) next.splice(oldIndex, 1)
+    }
+
+    if (!next.includes(text)) next.push(text)
+
+    const answers = [...store.answers]
+    answers[tab] = next
+    setStore("answers", answers)
+  }
+
   function selectTab(index: number) {
+    if (store.editing && textarea) {
+      const text = textarea.plainText?.trim() ?? ""
+      const prevTab = store.tab
+
+      if (text) {
+        const prevQuestion = questions()[prevTab]
+        const prevMulti = prevQuestion?.multiple === true
+
+        if (prevMulti) {
+          saveCustomAnswerMulti(prevTab, text)
+        } else {
+          const inputs = [...store.custom]
+          inputs[prevTab] = text
+          setStore("custom", inputs)
+
+          const answers = [...store.answers]
+          answers[prevTab] = [text]
+          setStore("answers", answers)
+        }
+      }
+    }
+
+    setStore("editing", false)
     setStore("tab", index)
     setStore("selected", 0)
   }
@@ -163,20 +208,7 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
         }
 
         if (multi()) {
-          const inputs = [...store.custom]
-          inputs[store.tab] = text
-          setStore("custom", inputs)
-
-          const existing = store.answers[store.tab] ?? []
-          const next = [...existing]
-          if (prev) {
-            const index = next.indexOf(prev)
-            if (index !== -1) next.splice(index, 1)
-          }
-          if (!next.includes(text)) next.push(text)
-          const answers = [...store.answers]
-          answers[store.tab] = next
-          setStore("answers", answers)
+          saveCustomAnswerMulti(store.tab, text)
           setStore("editing", false)
           return
         }
