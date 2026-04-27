@@ -2480,6 +2480,7 @@ export class Session2 extends HeyApiClient {
         modelID: string
       }
       command?: string
+      display?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2495,6 +2496,7 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "agent" },
             { in: "body", key: "model" },
             { in: "body", key: "command" },
+            { in: "body", key: "display" },
           ],
         },
       ],
