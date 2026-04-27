@@ -367,6 +367,12 @@ export function SessionTurn(
     if (showReasoningSummaries()) return assistantVisible() === 0
     return true
   })
+  const thinkingText = createMemo(() => {
+    const s = status().type
+    if (s === "steer") return i18n.t("ui.sessionTurn.status.steering")
+    if (s === "wrap") return i18n.t("ui.sessionTurn.status.wrappingUp")
+    return i18n.t("ui.sessionTurn.status.thinking")
+  })
 
   const autoScroll = createAutoScroll({
     working,
@@ -405,6 +411,7 @@ export function SessionTurn(
                     showAssistantCopyPartID={assistantCopyPartID()}
                     turnDurationMs={turnDurationMs()}
                     working={working()}
+                    status={status()}
                     showReasoningSummaries={showReasoningSummaries()}
                     shellToolDefaultOpen={props.shellToolDefaultOpen}
                     editToolDefaultOpen={props.editToolDefaultOpen}
@@ -413,8 +420,8 @@ export function SessionTurn(
               </Show>
               <Show when={showThinking()}>
                 <div data-slot="session-turn-thinking">
-                  <TextShimmer text={i18n.t("ui.sessionTurn.status.thinking")} />
-                  <Show when={!showReasoningSummaries()}>
+                  <TextShimmer text={thinkingText()} />
+                  <Show when={!showReasoningSummaries() && status().type !== "steer" && status().type !== "wrap"}>
                     <TextReveal
                       text={reasoningHeading()}
                       class="session-turn-thinking-heading"

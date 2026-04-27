@@ -1256,8 +1256,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           yield* sessions.setPermission({ sessionID: session.id, permission: permissions })
         }
 
+        yield* elog.info("prompt called", { isSteer: input.isSteer })
+
         if (input.noReply === true) return message
-        return yield* loop({ sessionID: input.sessionID })
+        return yield* loop({ sessionID: input.sessionID, isSteer: input.isSteer })
       },
     )
 
@@ -1278,7 +1280,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         const session = yield* sessions.get(sessionID)
 
         while (true) {
-          yield* status.set(sessionID, { type: "busy" })
+          const currentStatus = yield* status.get(sessionID)
+          if (currentStatus?.type !== "steer" && currentStatus?.type !== "wrap") {
+            yield* status.set(sessionID, { type: "busy" })
+          }
           yield* slog.info("loop", { step })
 
           let msgs = yield* MessageV2.filterCompactedEffect(sessionID)
@@ -1478,7 +1483,18 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               }
             }
 
+            const interrupt = yield* state.getInterrupt(sessionID)
+            if (interrupt === "wrap") {
+              yield* state.clearInterrupt(sessionID)
+              return "continue" as const
+            }
+            if (interrupt === "steer") {
+              yield* state.clearInterrupt(sessionID)
+              return "continue" as const
+            }
+
             if (result === "stop") return "break" as const
+
             if (result === "compact") {
               yield* compaction.create({
                 sessionID,
@@ -1681,6 +1697,7 @@ export const PromptInput = Schema.Struct({
   model: Schema.optional(ModelRef),
   agent: Schema.optional(Schema.String),
   noReply: Schema.optional(Schema.Boolean),
+  isSteer: Schema.optional(Schema.Boolean),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)).annotate({
     description:
       "@deprecated tools and permissions have been merged, you can set permissions on the session itself now",
@@ -1712,6 +1729,7 @@ export type PromptInput = Omit<Schema.Schema.Type<typeof PromptInput>, "parts"> 
 
 export class LoopInput extends Schema.Class<LoopInput>("SessionPrompt.LoopInput")({
   sessionID: SessionID,
+  isSteer: Schema.optional(Schema.Boolean),
 }) {
   static readonly zod = zod(this)
 }

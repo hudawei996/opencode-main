@@ -14,6 +14,7 @@ import { PartID } from "./schema"
 import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
+import { SessionRunState } from "./run-state"
 import { SessionSummary } from "./summary"
 import type { Provider } from "@/provider/provider"
 import { Question } from "@/question"
@@ -90,6 +91,7 @@ export const layer: Layer.Layer<
   | Plugin.Service
   | SessionSummary.Service
   | SessionStatus.Service
+  | SessionRunState.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -104,6 +106,7 @@ export const layer: Layer.Layer<
     const summary = yield* SessionSummary.Service
     const scope = yield* Scope.Scope
     const status = yield* SessionStatus.Service
+    const runState = yield* SessionRunState.Service
 
     const create = Effect.fn("SessionProcessor.create")(function* (input: Input) {
       // Pre-capture snapshot before the LLM stream starts. The AI SDK
@@ -215,9 +218,13 @@ export const layer: Layer.Layer<
 
       const handleEvent = Effect.fnUntraced(function* (value: StreamEvent) {
         switch (value.type) {
-          case "start":
-            yield* status.set(ctx.sessionID, { type: "busy" })
+          case "start": {
+            const currentStatus = yield* status.get(ctx.sessionID)
+            if (currentStatus?.type !== "steer" && currentStatus?.type !== "wrap") {
+              yield* status.set(ctx.sessionID, { type: "busy" })
+            }
             return
+          }
 
           case "reasoning-start":
             if (value.id in ctx.reasoningMap) return
@@ -547,10 +554,20 @@ export const layer: Layer.Layer<
             ctx.reasoningMap = {}
             const stream = llm.stream(streamInput)
 
-            yield* stream.pipe(
-              Stream.tap((event) => handleEvent(event)),
-              Stream.takeUntil(() => ctx.needsCompaction),
-              Stream.runDrain,
+            yield* Effect.raceFirst(
+              stream.pipe(
+                Stream.tap((event) => handleEvent(event)),
+                Stream.takeUntil(() => ctx.needsCompaction),
+                Stream.runDrain,
+              ),
+              Effect.gen(function* () {
+                while (true) {
+                  yield* Effect.sleep("50 millis")
+                  if ((yield* runState.getInterrupt(ctx.sessionID)) === "steer") {
+                    return
+                  }
+                }
+              })
             )
           }).pipe(
             Effect.onInterrupt(() =>
@@ -611,6 +628,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(Plugin.defaultLayer),
     Layer.provide(SessionSummary.defaultLayer),
     Layer.provide(SessionStatus.defaultLayer),
+    Layer.provide(SessionRunState.defaultLayer),
     Layer.provide(Bus.layer),
     Layer.provide(Config.defaultLayer),
   ),

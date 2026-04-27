@@ -999,6 +999,45 @@ export const SessionRoutes = lazy(() =>
         }),
     )
     .post(
+      "/:sessionID/interrupt",
+      describeRoute({
+        summary: "Interrupt session",
+        description: "Interrupt a running session with a specific behavior type.",
+        operationId: "session.interrupt",
+        responses: {
+          200: {
+            description: "Session interrupted successfully",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: SessionID.zod,
+        }),
+      ),
+      validator("json", z.object({ type: z.enum(["steer", "wrap", "clear"]) })),
+      async (c) =>
+        jsonRequest("SessionRoutes.interrupt", c, function* () {
+          const sessionID = c.req.valid("param").sessionID
+          const body = c.req.valid("json")
+          const state = yield* SessionRunState.Service
+          if (body.type === "clear") {
+            yield* state.clearInterrupt(sessionID)
+            yield* SessionStatus.Service.use((svc) => svc.set(sessionID, { type: "busy" }))
+          } else {
+            yield* state.requestInterrupt(sessionID, body.type)
+          }
+          return true
+        }),
+    )
+    .post(
       "/:sessionID/revert",
       describeRoute({
         summary: "Revert message",

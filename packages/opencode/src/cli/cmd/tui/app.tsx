@@ -15,7 +15,9 @@ import {
   Show,
   on,
 } from "solid-js"
+import { produce } from "solid-js/store"
 import { win32DisableProcessedInput, win32InstallCtrlCGuard } from "./win32"
+import { Log } from "@/util"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import semver from "semver"
 import { DialogProvider, useDialog } from "@tui/ui/dialog"
@@ -256,6 +258,26 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     })
 
   useKeyboard((evt) => {
+    if (evt.ctrl && evt.name === "y") {
+      if (evt.eventType === "release" || evt.eventType === "repeat") return
+      
+      const current = kv.get("followup", "steer")
+      let next: "steer" | "wrap" | "queue" = "steer"
+      if (current === "steer") next = "wrap"
+      else if (current === "wrap") next = "queue"
+      
+      kv.set("followup", next)
+      
+      toast.show({
+        message: `Follow-Up mode: ${next.charAt(0).toUpperCase() + next.slice(1)}`,
+        variant: "info",
+        duration: 2000,
+      })
+      evt.preventDefault()
+      evt.stopPropagation()
+      return
+    }
+
     if (!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
     const sel = renderer.getSelection()
     if (!sel) return
@@ -592,6 +614,28 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         dialog.replace(() => <DialogStatus />)
       },
       category: "System",
+    },
+    {
+      title: `Toggle follow-up mode (${kv.get("followup", "steer").charAt(0).toUpperCase() + kv.get("followup", "steer").slice(1)})`,
+      keybind: "session_toggle_queue_mode",
+      value: "session.toggle-queue-mode",
+      onSelect: (dialog) => {
+        const current = kv.get("followup", "steer")
+        let next: "steer" | "wrap" | "queue" = "steer"
+        if (current === "steer") next = "wrap"
+        else if (current === "wrap") next = "queue"
+        
+        kv.set("followup", next)
+        
+        toast.show({
+          message: `Follow-Up mode: ${next.charAt(0).toUpperCase() + next.slice(1)}`,
+          variant: "info",
+          duration: 2000,
+        })
+        
+        dialog.clear()
+      },
+      category: "Session",
     },
     {
       title: "Switch theme",
