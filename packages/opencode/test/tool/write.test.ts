@@ -177,18 +177,33 @@ describe("tool.write", () => {
   })
 
   describe("file permissions", () => {
-    it.live("sets file permissions when writing sensitive data", () =>
-      provideTmpdirInstance((dir) =>
+    const base = 0o666
+
+    function writeAndCheckMode(umask: number, expected: number) {
+      if (process.platform === "win32") return
+      return provideTmpdirInstance((dir) =>
         Effect.gen(function* () {
           const filepath = path.join(dir, "sensitive.json")
-          yield* run({ filePath: filepath, content: JSON.stringify({ secret: "data" }) })
-
-          if (process.platform !== "win32") {
+          const prev = process.umask(umask)
+          try {
+            yield* run({ filePath: filepath, content: JSON.stringify({ secret: "data" }) })
             const stats = yield* Effect.promise(() => fs.stat(filepath))
-            expect(stats.mode & 0o777).toBe(0o644)
+            expect(stats.mode & 0o777).toBe(expected)
+          } finally {
+            process.umask(prev)
           }
         }),
-      ),
+      )
+    }
+
+    it.live("base mode is 0o666 before umask masking", () => writeAndCheckMode(0o000, base))
+    it.live("respects umask 0o022 → 0o644", () => writeAndCheckMode(0o022, base & ~0o022))
+    it.live("respects corner umask 0o027 → 0o640", () => writeAndCheckMode(0o027, base & ~0o027))
+    it.live("respects umask 0o077 → 0o600", () => writeAndCheckMode(0o077, base & ~0o077))
+    it.live("0o777 fully masks the 0o666 base mode", () =>
+      Effect.sync(() => {
+        expect(base & ~0o777).toBe(0o000)
+      }),
     )
   })
 
