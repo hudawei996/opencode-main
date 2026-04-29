@@ -150,6 +150,8 @@ import type {
   SessionPromptErrors,
   SessionPromptResponses,
   SessionRevertErrors,
+  SessionRevertPreviewErrors,
+  SessionRevertPreviewResponses,
   SessionRevertResponses,
   SessionShareErrors,
   SessionShareResponses,
@@ -3289,6 +3291,8 @@ export class Session2 extends HeyApiClient {
       workspace?: string
       limit?: number
       before?: string
+      after?: string
+      oldest?: boolean | "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3302,6 +3306,8 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "workspace" },
             { in: "query", key: "limit" },
             { in: "query", key: "before" },
+            { in: "query", key: "after" },
+            { in: "query", key: "oldest" },
           ],
         },
       ],
@@ -3829,6 +3835,42 @@ export class Session2 extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get revert preview
+   *
+   * Return the reverted user messages and next restore boundary for a reverted session.
+   */
+  public revertPreview<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionRevertPreviewResponses,
+      SessionRevertPreviewErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/revert",
+      ...options,
+      ...params,
     })
   }
 

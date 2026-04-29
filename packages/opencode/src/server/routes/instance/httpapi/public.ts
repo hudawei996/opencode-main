@@ -48,6 +48,7 @@ type OpenApiSchema = {
 
 type OpenApiResponse = {
   description?: string
+  headers?: Record<string, { description?: string; schema?: OpenApiSchema }>
   content?: Record<string, { schema?: OpenApiSchema }>
 }
 
@@ -72,7 +73,7 @@ const InstanceQueryParameters = [
 // public call shape. These keep SDK callers passing numbers/booleans while the
 // server still decodes string query params at runtime.
 const QueryNumberParameters = new Set(["start", "cursor", "limit", "method"])
-const QueryBooleanParameters = new Set(["roots", "archived"])
+const QueryBooleanParameters = new Set(["roots", "archived", "oldest"])
 const QueryParameterSchemas = {
   "GET /find/file limit": { type: "integer", minimum: 1, maximum: 200 },
   "GET /session/{sessionID}/diff messageID": { type: "string", pattern: "^msg.*" },
@@ -86,6 +87,34 @@ const PathParameterSchemas = {
   permissionID: { type: "string", pattern: "^per.*" },
   ptyID: { type: "string", pattern: "^pty.*" },
 } satisfies Record<string, OpenApiSchema>
+
+const RevertPreviewSchema = {
+  anyOf: [
+    {
+      type: "object",
+      required: ["userCount", "items"],
+      additionalProperties: false,
+      properties: {
+        userCount: { type: "number" },
+        nextMessageID: PathParameterSchemas.messageID,
+        partID: PathParameterSchemas.partID,
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["id", "text"],
+            additionalProperties: false,
+            properties: {
+              id: PathParameterSchemas.messageID,
+              text: { type: "string" },
+            },
+          },
+        },
+      },
+    },
+    { type: "null" },
+  ],
+} satisfies OpenApiSchema
 
 const LegacyComponentDescriptions = {
   LogLevel: "Log level",
@@ -168,6 +197,18 @@ function matchLegacyOpenApi(input: Record<string, unknown>) {
       delete operation.responses?.["401"]
       normalizeLegacyErrorResponses(operation)
       normalizeLegacyOperation(operation, path, method)
+      if (path === "/session/{sessionID}/message" && method === "get" && operation.responses?.["200"]) {
+        operation.responses["200"].headers = {
+          Link: {
+            description: "RFC 8288 pagination links for previous/next message pages",
+            schema: { type: "string" },
+          },
+        }
+      }
+      if (path === "/session/{sessionID}/revert" && method === "get") {
+        const content = operation.responses?.["200"]?.content?.["application/json"]
+        if (content) content.schema = structuredClone(RevertPreviewSchema)
+      }
       if ((path === "/event" || path === "/global/event") && method === "get") {
         // HttpApi has no first-class SSE response schema, and these handlers are
         // raw/streaming routes. Document the actual wire protocol explicitly.

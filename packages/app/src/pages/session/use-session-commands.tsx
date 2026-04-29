@@ -12,6 +12,7 @@ import { usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
 import { useSettings } from "@/context/settings"
 import { useSync } from "@/context/sync"
+import { messageBefore } from "@/context/revert-page"
 import { useTerminal } from "@/context/terminal"
 import { showToast } from "@opencode-ai/ui/toast"
 import { findLast } from "@opencode-ai/core/util/array"
@@ -25,6 +26,7 @@ export type SessionCommandContext = {
   setActiveMessage: (message: UserMessage | undefined) => void
   focusInput: () => void
   review?: () => boolean
+  nextRevertMessageID: () => string | undefined
 }
 
 const withCategory = (category: string) => {
@@ -83,10 +85,15 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     return sync.data.message[id] ?? []
   }
   const userMessages = () => messages().filter((m) => m.role === "user") as UserMessage[]
+  const beforeMessage = (message: UserMessage, boundaryID: string) => {
+    const boundary = messages().find((item) => item.id === boundaryID)
+    if (!boundary) return message.id < boundaryID
+    return messageBefore(message, boundary)
+  }
   const visibleUserMessages = () => {
     const revert = info()?.revert?.messageID
     if (!revert) return userMessages()
-    return userMessages().filter((m) => m.id < revert)
+    return userMessages().filter((m) => beforeMessage(m, revert))
   }
 
   const showAllFiles = () => {
@@ -295,7 +302,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     }
 
     const revert = info()?.revert?.messageID
-    const message = findLast(userMessages(), (x) => !revert || x.id < revert)
+    const message = findLast(userMessages(), (x) => !revert || beforeMessage(x, revert))
     if (!message) return
 
     await sdk.client.session.revert({ sessionID, messageID: message.id })
@@ -305,7 +312,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       prompt.set(restored)
     }
 
-    const prev = findLast(userMessages(), (x) => x.id < message.id)
+    const prev = findLast(userMessages(), (x) => beforeMessage(x, message.id))
     setActiveMessage(prev)
   }
 
@@ -316,17 +323,22 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     const revertMessageID = info()?.revert?.messageID
     if (!revertMessageID) return
 
-    const next = userMessages().find((x) => x.id > revertMessageID)
-    if (!next) {
+    const preview =
+      actions.nextRevertMessageID() !== undefined
+        ? { nextMessageID: actions.nextRevertMessageID() }
+        : await sdk.client.session.revertPreview({ sessionID }).then((result) => result.data ?? undefined)
+    const nextMessageID = preview?.nextMessageID
+    if (!preview && revertMessageID) return
+    if (!nextMessageID) {
       await sdk.client.session.unrevert({ sessionID })
       prompt.reset()
-      const last = findLast(userMessages(), (x) => x.id >= revertMessageID)
+      const last = findLast(userMessages(), (x) => !beforeMessage(x, revertMessageID))
       setActiveMessage(last)
       return
     }
 
-    await sdk.client.session.revert({ sessionID, messageID: next.id })
-    const prev = findLast(userMessages(), (x) => x.id < next.id)
+    await sdk.client.session.revert({ sessionID, messageID: nextMessageID })
+    const prev = findLast(userMessages(), (x) => beforeMessage(x, nextMessageID))
     setActiveMessage(prev)
   }
 
