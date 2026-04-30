@@ -1,43 +1,40 @@
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
-import { RunCommand } from "./cli/cmd/run"
-import { GenerateCommand } from "./cli/cmd/generate"
+import { RunCommand } from "./cli/cmd/run/command"
+import { GenerateCommand } from "./cli/cmd/generate/command"
 import * as Log from "@opencode-ai/core/util/log"
-import { ConsoleCommand } from "./cli/cmd/account"
-import { ProvidersCommand } from "./cli/cmd/providers"
-import { AgentCommand } from "./cli/cmd/agent"
-import { UpgradeCommand } from "./cli/cmd/upgrade"
-import { UninstallCommand } from "./cli/cmd/uninstall"
-import { ModelsCommand } from "./cli/cmd/models"
+import { ConsoleCommand } from "./cli/cmd/account/command"
+import { ProvidersCommand } from "./cli/cmd/providers/command"
+import { AgentCommand } from "./cli/cmd/agent/command"
+import { UpgradeCommand } from "./cli/cmd/upgrade/command"
+import { UninstallCommand } from "./cli/cmd/uninstall/command"
+import { ModelsCommand } from "./cli/cmd/models/command"
 import { UI } from "./cli/ui"
 import { Installation } from "./installation"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { FormatError } from "./cli/error"
-import { ServeCommand } from "./cli/cmd/serve"
+import { ServeCommand } from "./cli/cmd/serve/command"
 import { Filesystem } from "@/util/filesystem"
-import { DebugCommand } from "./cli/cmd/debug"
-import { StatsCommand } from "./cli/cmd/stats"
-import { McpCommand } from "./cli/cmd/mcp"
-import { GithubCommand } from "./cli/cmd/github"
-import { ExportCommand } from "./cli/cmd/export"
-import { ImportCommand } from "./cli/cmd/import"
-import { AttachCommand } from "./cli/cmd/tui/attach"
-import { TuiThreadCommand } from "./cli/cmd/tui/thread"
-import { AcpCommand } from "./cli/cmd/acp"
+import { DebugCommand } from "./cli/cmd/debug/command"
+import { StatsCommand } from "./cli/cmd/stats/command"
+import { McpCommand } from "./cli/cmd/mcp/command"
+import { GithubCommand } from "./cli/cmd/github/command"
+import { ExportCommand } from "./cli/cmd/export/command"
+import { ImportCommand } from "./cli/cmd/import/command"
+import { AttachCommand } from "./cli/cmd/tui/attach/command"
+import { TuiThreadCommand } from "./cli/cmd/tui/thread/command"
+import { AcpCommand } from "./cli/cmd/acp/command"
 import { EOL } from "os"
-import { WebCommand } from "./cli/cmd/web"
-import { PrCommand } from "./cli/cmd/pr"
-import { SessionCommand } from "./cli/cmd/session"
-import { DbCommand } from "./cli/cmd/db"
+import { WebCommand } from "./cli/cmd/web/command"
+import { PrCommand } from "./cli/cmd/pr/command"
+import { SessionCommand } from "./cli/cmd/session/command"
+import { DbCommand } from "./cli/cmd/db/command"
 import path from "path"
 import { Global } from "@opencode-ai/core/global"
-import { JsonMigration } from "@/storage/json-migration"
-import { Database } from "@/storage/db"
 import { errorMessage } from "./util/error"
-import { PluginCommand } from "./cli/cmd/plug"
+import { PluginCommand } from "./cli/cmd/plug/command"
 import { Heap } from "./cli/heap"
-import { drizzle } from "drizzle-orm/bun-sqlite"
 import { ensureProcessMetadata } from "@opencode-ai/core/util/opencode-process"
 
 const processMetadata = ensureProcessMetadata("main")
@@ -126,6 +123,11 @@ const cli = yargs(args)
       let last = -1
       if (tty) process.stderr.write("\x1b[?25l")
       try {
+        const [{ JsonMigration }, { Database }, { drizzle }] = await Promise.all([
+          import("@/storage/json-migration"),
+          import("@/storage/db"),
+          import("drizzle-orm/bun-sqlite"),
+        ])
         await JsonMigration.run(drizzle({ client: Database.Client().$client }), {
           progress: (event) => {
             const percent = Math.floor((event.current / event.total) * 100)
