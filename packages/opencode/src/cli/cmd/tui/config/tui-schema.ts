@@ -29,8 +29,8 @@ export const TuiOptions = z.object({
     .int()
     .min(0)
     .max(20)
-    .optional()
-    .describe("Horizontal padding (in columns) for the main content area (default: 2)"),
+    .default(2)
+    .describe("Horizontal padding (in columns) for the main content area"),
 })
 
 export const TuiInfo = z
