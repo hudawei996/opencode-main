@@ -296,6 +296,7 @@ export const ApplyPatchTool = Tool.define(
           diagnostics,
         },
         output,
+        args: params,
       }
     })
 
