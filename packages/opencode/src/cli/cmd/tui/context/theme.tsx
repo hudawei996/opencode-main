@@ -771,6 +771,13 @@ function getSyntaxRules(theme: Theme) {
       },
     },
     {
+      scope: ["extmark.skill"],
+      style: {
+        foreground: theme.info,
+        bold: true,
+      },
+    },
+    {
       scope: ["extmark.paste"],
       style: {
         foreground: theme.background,
