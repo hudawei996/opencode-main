@@ -378,6 +378,7 @@ export const SessionApi = HttpApi.make("session")
         ),
         HttpApiEndpoint.delete("deleteMessage", SessionPaths.deleteMessage, {
           params: { sessionID: SessionID, messageID: MessageID },
+          query: { force: Schema.optional(QueryBoolean) },
           success: described(Schema.Boolean, "Successfully deleted message"),
           error: [HttpApiError.BadRequest, HttpApiError.NotFound],
         }).annotateMerge(
