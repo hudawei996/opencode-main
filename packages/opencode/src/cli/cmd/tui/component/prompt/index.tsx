@@ -58,6 +58,7 @@ export type PromptProps = {
   hint?: JSX.Element
   right?: JSX.Element
   showPlaceholder?: boolean
+  placement?: "above" | "below"
   placeholders?: {
     normal?: string[]
     shell?: string[]
@@ -1192,6 +1193,7 @@ export function Prompt(props: PromptProps) {
           setAuto(() => r)
         }}
         anchor={() => anchor}
+        placement={props.placement ?? "above"}
         input={() => input}
         setPrompt={(cb) => {
           setStore("prompt", produce(cb))

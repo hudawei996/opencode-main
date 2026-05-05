@@ -1,5 +1,6 @@
 import { cmd } from "@/cli/cmd/cmd"
 import { tui } from "./app"
+import { repl } from "@/cli/cmd/repl"
 import { Rpc } from "@/util/rpc"
 import { type rpc } from "./worker"
 import path from "path"
@@ -112,6 +113,12 @@ export const TuiThreadCommand = cmd({
       .option("agent", {
         type: "string",
         describe: "agent to use",
+      })
+      .option("mode", {
+        type: "string",
+        choices: ["minimal", "tui"],
+        default: "minimal",
+        describe: "interface mode: 'minimal' (default, text-based REPL) or 'tui' (full terminal UI)",
       }),
   handler: async (args) => {
     // Keep ENABLE_PROCESSED_INPUT cleared even if other code flips it.
@@ -143,6 +150,23 @@ export const TuiThreadCommand = cmd({
         [OPENCODE_PROCESS_ROLE]: "worker",
         [OPENCODE_RUN_ID]: ensureRunID(),
       })
+
+      // Default to minimal REPL mode for this fork.
+      // This provides a lightweight, text-based interface that works
+      // in all terminal environments (SSH, tmux, CI/CD).
+      // Users can switch to TUI mode with --mode tui flag.
+      if (args.mode === "minimal") {
+        const initial = await input(args.prompt)
+        await repl({
+          directory: cwd,
+          agent: args.agent,
+          model: args.model,
+          continueLast: args.continue,
+          sessionID: args.session,
+          initialPrompt: initial,
+        })
+        return
+      }
 
       const worker = new Worker(file, {
         env,
