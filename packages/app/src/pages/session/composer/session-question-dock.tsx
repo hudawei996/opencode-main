@@ -121,17 +121,20 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
   const measure = () => {
     if (!root) return
 
-    const scroller = document.querySelector(".scroll-view__viewport")
-    const head = scroller instanceof HTMLElement ? scroller.firstElementChild : undefined
-    const top =
-      head instanceof HTMLElement && head.classList.contains("sticky") ? head.getBoundingClientRect().bottom : 0
-    if (!top) {
-      root.style.removeProperty("--question-prompt-max-height")
-      return
-    }
-
     const dock = root.closest('[data-component="session-prompt-dock"]')
     if (!(dock instanceof HTMLElement)) return
+
+    const panel = dock.parentElement
+    if (!(panel instanceof HTMLElement)) return
+
+    const header = panel.querySelector("[data-session-title]")
+    const scroller = panel.querySelector(".scroll-view__viewport")
+    const top =
+      header instanceof HTMLElement
+        ? header.getBoundingClientRect().bottom
+        : scroller instanceof HTMLElement
+          ? scroller.getBoundingClientRect().top
+          : 0
 
     const dockBottom = dock.getBoundingClientRect().bottom
     const below = Math.max(0, dockBottom - root.getBoundingClientRect().bottom)
@@ -178,8 +181,16 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
     makeEventListener(window, "resize", update)
 
     const dock = root?.closest('[data-component="session-prompt-dock"]')
-    const scroller = document.querySelector(".scroll-view__viewport")
-    createResizeObserver([dock, scroller], update)
+    const panel = dock?.parentElement
+    createResizeObserver(
+      [
+        dock,
+        panel,
+        panel instanceof HTMLElement ? panel.querySelector(".scroll-view__viewport") : undefined,
+        panel instanceof HTMLElement ? panel.querySelector("[data-session-title]") : undefined,
+      ],
+      update,
+    )
 
     onCleanup(() => {
       if (raf !== undefined) cancelAnimationFrame(raf)
