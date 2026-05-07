@@ -243,7 +243,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         })
       }
 
-      const stored = () => modelStore.variant[agent.current().name]
+      const stored = () => {
+        const currentAgent = agent.current()
+        if (!currentAgent) return undefined
+        return modelStore.variant[currentAgent.name]
+      }
 
       return {
         current: currentModel,
@@ -387,7 +391,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             return variants()
           },
           set(value: string | undefined) {
-            setModelStore("variant", agent.current().name, value ?? null)
+            const currentAgent = agent.current()
+            if (!currentAgent) return
+            setModelStore("variant", currentAgent.name, value ?? null)
             save()
           },
           cycle() {
