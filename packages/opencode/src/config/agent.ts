@@ -18,6 +18,7 @@ const log = Log.create({ service: "config" })
 const Color = Schema.Union([
   Schema.String.check(Schema.isPattern(/^#[0-9a-fA-F]{6}$/)),
   Schema.Literals(["primary", "secondary", "accent", "success", "warning", "error", "info"]),
+  Schema.Literals(["red", "blue", "green", "yellow", "purple", "orange", "pink", "cyan"]),
 ])
 
 const AgentSchema = Schema.StructWithRest(
@@ -40,7 +41,7 @@ const AgentSchema = Schema.StructWithRest(
     }),
     options: Schema.optional(Schema.Record(Schema.String, Schema.Any)),
     color: Schema.optional(Color).annotate({
-      description: "Hex color code (e.g., #FF5733) or theme color (e.g., primary)",
+      description: "Hex color code (e.g., #FF5733), theme color (e.g., primary) or other valid CSS colors (e.g., red)",
     }),
     steps: Schema.optional(PositiveInt).annotate({
       description: "Maximum number of agentic iterations before forcing text-only response",
