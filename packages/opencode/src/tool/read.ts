@@ -10,6 +10,7 @@ import DESCRIPTION from "./read.txt"
 import { InstanceState } from "@/effect/instance-state"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { Instruction } from "../session/instruction"
+import { relative } from "./relative"
 import { isPdfAttachment, sniffAttachmentMime } from "@/util/media"
 
 const DEFAULT_READ_LIMIT = 2000
@@ -162,7 +163,7 @@ export const ReadTool = Tool.define(
       if (process.platform === "win32") {
         filepath = AppFileSystem.normalizePath(filepath)
       }
-      const title = path.relative(instance.worktree, filepath)
+      const rel = relative(instance,  filepath)
 
       const stat = yield* fs.stat(filepath).pipe(
         Effect.catchIf(
@@ -178,7 +179,7 @@ export const ReadTool = Tool.define(
 
       yield* ctx.ask({
         permission: "read",
-        patterns: [filepath],
+        patterns: [rel],
         always: ["*"],
         metadata: {},
       })
@@ -194,7 +195,7 @@ export const ReadTool = Tool.define(
         const truncated = start + sliced.length < items.length
 
         return {
-          title,
+          title: rel,
           output: [
             `<path>${filepath}</path>`,
             `<type>directory</type>`,
@@ -223,7 +224,7 @@ export const ReadTool = Tool.define(
         const bytes = yield* fs.readFile(filepath)
         const msg = isPdfAttachment(mime) ? "PDF read successfully" : "Image read successfully"
         return {
-          title,
+          title: rel,
           output: msg,
           metadata: {
             preview: msg,
@@ -275,7 +276,7 @@ export const ReadTool = Tool.define(
       }
 
       return {
-        title,
+        title: rel,
         output,
         metadata: {
           preview: file.raw.slice(0, 20).join("\n"),

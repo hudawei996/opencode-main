@@ -153,6 +153,38 @@ describe("tool.edit", () => {
       })
     })
 
+    test("uses directory-relative permission paths in non-git projects", async () => {
+      await using tmp = await tmpdir()
+      const filepath = path.join(tmp.path, ".agents", "file.txt")
+      const calls: Array<{ patterns: readonly string[] }> = []
+
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const edit = await resolve()
+          await Effect.runPromise(
+            edit.execute(
+              {
+                filePath: filepath,
+                oldString: "",
+                newString: "new content",
+              },
+              {
+                ...ctx,
+                ask: (input) =>
+                  Effect.sync(() => {
+                    calls.push({ patterns: input.patterns })
+                  }),
+              },
+            ),
+          )
+
+          expect(calls).toHaveLength(1)
+          expect(calls[0]?.patterns).toEqual([path.join(".agents", "file.txt")])
+        },
+      })
+    })
+
     test("emits add event for new files", async () => {
       await using tmp = await tmpdir()
       const filepath = path.join(tmp.path, "new.txt")
