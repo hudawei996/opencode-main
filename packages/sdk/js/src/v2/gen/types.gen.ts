@@ -1262,6 +1262,7 @@ export type Config = {
   }
   experimental?: {
     disable_paste_summary?: boolean
+    disable_vcs_diff?: boolean
     batch_tool?: boolean
     openTelemetry?: boolean
     primary_tools?: Array<string>
