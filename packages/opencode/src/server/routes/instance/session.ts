@@ -768,12 +768,19 @@ export const SessionRoutes = lazy(() =>
           messageID: MessageID.zod,
         }),
       ),
+      validator(
+        "query",
+        z.object({
+          force: QueryBoolean.optional(),
+        }),
+      ),
       async (c) =>
         jsonRequest("SessionRoutes.deleteMessage", c, function* () {
           const params = c.req.valid("param")
+          const query = c.req.valid("query")
           const state = yield* SessionRunState.Service
           const session = yield* Session.Service
-          yield* state.assertNotBusy(params.sessionID)
+          if (!queryBoolean(query.force)) yield* state.assertNotBusy(params.sessionID)
           yield* session.removeMessage({
             sessionID: params.sessionID,
             messageID: params.messageID,

@@ -328,8 +328,9 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
 
     const deleteMessage = Effect.fn("SessionHttpApi.deleteMessage")(function* (ctx: {
       params: { sessionID: SessionID; messageID: MessageID }
+      query: { force?: boolean }
     }) {
-      yield* runState.assertNotBusy(ctx.params.sessionID)
+      if (!ctx.query.force) yield* runState.assertNotBusy(ctx.params.sessionID)
       yield* session.removeMessage(ctx.params)
       return true
     })
