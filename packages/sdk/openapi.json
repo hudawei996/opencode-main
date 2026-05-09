@@ -5101,6 +5101,30 @@
               "type": "string"
             },
             "required": false
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "oldest",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "string",
+                  "enum": ["true", "false"]
+                }
+              ]
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -5121,12 +5145,23 @@
                         "items": {
                           "$ref": "#/components/schemas/Part"
                         }
+                      },
+                      "cursor": {
+                        "type": "string"
                       }
                     },
                     "required": ["info", "parts"],
                     "additionalProperties": false
                   },
                   "description": "List of messages"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "description": "RFC 8288 pagination links for previous/next message pages",
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5370,6 +5405,9 @@
                       "items": {
                         "$ref": "#/components/schemas/Part"
                       }
+                    },
+                    "cursor": {
+                      "type": "string"
                     }
                   },
                   "required": ["info", "parts"],
@@ -6306,6 +6344,9 @@
                       "items": {
                         "$ref": "#/components/schemas/Part"
                       }
+                    },
+                    "cursor": {
+                      "type": "string"
                     }
                   },
                   "required": ["info", "parts"],
@@ -6382,6 +6423,116 @@
       }
     },
     "/session/{sessionID}/revert": {
+      "get": {
+        "tags": ["session"],
+        "operationId": "session.revertPreview",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revert preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": ["userCount", "items"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "userCount": {
+                          "type": "number"
+                        },
+                        "nextMessageID": {
+                          "type": "string",
+                          "pattern": "^msg.*"
+                        },
+                        "partID": {
+                          "type": "string",
+                          "pattern": "^prt.*"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["id", "text"],
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "pattern": "^msg.*"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Return the reverted user messages and next restore boundary for a reverted session.",
+        "summary": "Get revert preview",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.revertPreview({\n  ...\n})"
+          }
+        ]
+      },
       "post": {
         "tags": ["session"],
         "operationId": "session.revert",
@@ -6434,7 +6585,7 @@
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "NotFoundError",
             "content": {
               "application/json": {
                 "schema": {
@@ -6526,7 +6677,7 @@
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "NotFoundError",
             "content": {
               "application/json": {
                 "schema": {

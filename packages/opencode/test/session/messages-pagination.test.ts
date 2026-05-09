@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import path from "path"
-import { Instance } from "../../src/project/instance"
 import { WithInstance } from "../../src/project/with-instance"
 import { Session as SessionNs } from "@/session/session"
 import { MessageV2 } from "../../src/session/message-v2"
-import { MessageID, PartID, type SessionID } from "../../src/session/schema"
+import { MessageID, PartID, SessionID, type SessionID as SessionIDType } from "../../src/session/schema"
 import { ModelID, ProviderID } from "../../src/provider/schema"
 import * as Log from "@opencode-ai/core/util/log"
 
@@ -21,7 +20,7 @@ const svc = {
   create(input?: SessionNs.CreateInput) {
     return run(SessionNs.Service.use((svc) => svc.create(input)))
   },
-  remove(id: SessionID) {
+  remove(id: SessionIDType) {
     return run(SessionNs.Service.use((svc) => svc.remove(id)))
   },
   updateMessage<T extends MessageV2.Info>(msg: T) {
@@ -30,12 +29,15 @@ const svc = {
   updatePart<T extends MessageV2.Part>(part: T) {
     return run(SessionNs.Service.use((svc) => svc.updatePart(part)))
   },
-  fork(input: { sessionID: SessionID; messageID?: MessageID }) {
+  fork(input: { sessionID: SessionIDType; messageID?: MessageID }) {
     return run(SessionNs.Service.use((svc) => svc.fork(input)))
+  },
+  messages(input: { sessionID: SessionIDType; limit?: number }) {
+    return run(SessionNs.Service.use((svc) => svc.messages(input)))
   },
 }
 
-async function fill(sessionID: SessionID, count: number, time = (i: number) => Date.now() + i) {
+async function fill(sessionID: SessionIDType, count: number, time = (i: number) => Date.now() + i) {
   const ids = [] as MessageID[]
   for (let i = 0; i < count; i++) {
     const id = MessageID.ascending()
@@ -46,10 +48,9 @@ async function fill(sessionID: SessionID, count: number, time = (i: number) => D
       role: "user",
       time: { created: time(i) },
       agent: "test",
-      model: { providerID: "test", modelID: "test" },
+      model: { providerID: ProviderID.make("test"), modelID: ModelID.make("test") },
       tools: {},
-      mode: "",
-    } as unknown as MessageV2.Info)
+    } satisfies MessageV2.User)
     await svc.updatePart({
       id: PartID.ascending(),
       sessionID,
@@ -61,7 +62,7 @@ async function fill(sessionID: SessionID, count: number, time = (i: number) => D
   return ids
 }
 
-async function addUser(sessionID: SessionID, text?: string) {
+async function addUser(sessionID: SessionIDType, text?: string) {
   const id = MessageID.ascending()
   await svc.updateMessage({
     id,
@@ -69,10 +70,9 @@ async function addUser(sessionID: SessionID, text?: string) {
     role: "user",
     time: { created: Date.now() },
     agent: "test",
-    model: { providerID: "test", modelID: "test" },
+    model: { providerID: ProviderID.make("test"), modelID: ModelID.make("test") },
     tools: {},
-    mode: "",
-  } as unknown as MessageV2.Info)
+  } satisfies MessageV2.User)
   if (text) {
     await svc.updatePart({
       id: PartID.ascending(),
@@ -86,7 +86,7 @@ async function addUser(sessionID: SessionID, text?: string) {
 }
 
 async function addAssistant(
-  sessionID: SessionID,
+  sessionID: SessionIDType,
   parentID: MessageID,
   opts?: { summary?: boolean; finish?: string; error?: MessageV2.Assistant["error"] },
 ) {
@@ -107,11 +107,11 @@ async function addAssistant(
     summary: opts?.summary,
     finish: opts?.finish,
     error: opts?.error,
-  } as unknown as MessageV2.Info)
+  } satisfies MessageV2.Assistant)
   return id
 }
 
-async function addCompactionPart(sessionID: SessionID, messageID: MessageID, tailStartID?: MessageID) {
+async function addCompactionPart(sessionID: SessionIDType, messageID: MessageID, tailStartID?: MessageID) {
   await svc.updatePart({
     id: PartID.ascending(),
     sessionID,
@@ -119,7 +119,7 @@ async function addCompactionPart(sessionID: SessionID, messageID: MessageID, tai
     type: "compaction",
     auto: true,
     tail_start_id: tailStartID,
-  } as any)
+  } satisfies MessageV2.CompactionPart)
 }
 
 describe("MessageV2.page", () => {
@@ -149,18 +149,15 @@ describe("MessageV2.page", () => {
         const a = MessageV2.page({ sessionID: session.id, limit: 2 })
         expect(a.items.map((item) => item.info.id)).toEqual(ids.slice(-2))
         expect(a.items.every((item) => item.parts.length === 1)).toBe(true)
-        expect(a.more).toBe(true)
-        expect(a.cursor).toBeTruthy()
+        expect(a.before).toBeTruthy()
 
-        const b = MessageV2.page({ sessionID: session.id, limit: 2, before: a.cursor! })
+        const b = MessageV2.page({ sessionID: session.id, limit: 2, before: a.before! })
         expect(b.items.map((item) => item.info.id)).toEqual(ids.slice(-4, -2))
-        expect(b.more).toBe(true)
-        expect(b.cursor).toBeTruthy()
+        expect(b.before).toBeTruthy()
 
-        const c = MessageV2.page({ sessionID: session.id, limit: 2, before: b.cursor! })
+        const c = MessageV2.page({ sessionID: session.id, limit: 2, before: b.before! })
         expect(c.items.map((item) => item.info.id)).toEqual(ids.slice(0, 2))
-        expect(c.more).toBe(false)
-        expect(c.cursor).toBeUndefined()
+        expect(c.before).toBeUndefined()
 
         await svc.remove(session.id)
       },
@@ -190,8 +187,22 @@ describe("MessageV2.page", () => {
 
         const result = MessageV2.page({ sessionID: session.id, limit: 10 })
         expect(result.items).toEqual([])
-        expect(result.more).toBe(false)
-        expect(result.cursor).toBeUndefined()
+        expect(result.before).toBeUndefined()
+        expect(result.after).toBeUndefined()
+
+        await svc.remove(session.id)
+      },
+    })
+  })
+
+  test("session messages honors limit zero", async () => {
+    await WithInstance.provide({
+      directory: root,
+      fn: async () => {
+        const session = await svc.create({})
+        await fill(session.id, 2)
+
+        expect(await svc.messages({ sessionID: session.id, limit: 0 })).toEqual([])
 
         await svc.remove(session.id)
       },
@@ -217,8 +228,7 @@ describe("MessageV2.page", () => {
 
         const result = MessageV2.page({ sessionID: session.id, limit: 3 })
         expect(result.items.map((item) => item.info.id)).toEqual(ids)
-        expect(result.more).toBe(false)
-        expect(result.cursor).toBeUndefined()
+        expect(result.before).toBeUndefined()
 
         await svc.remove(session.id)
       },
@@ -235,7 +245,7 @@ describe("MessageV2.page", () => {
         const result = MessageV2.page({ sessionID: session.id, limit: 1 })
         expect(result.items).toHaveLength(1)
         expect(result.items[0].info.id).toBe(ids[ids.length - 1])
-        expect(result.more).toBe(true)
+        expect(result.before).toBeTruthy()
 
         await svc.remove(session.id)
       },
@@ -274,7 +284,7 @@ describe("MessageV2.page", () => {
         const ids = await fill(session.id, 4, (i) => 1000.5 + i)
 
         const a = MessageV2.page({ sessionID: session.id, limit: 2 })
-        const b = MessageV2.page({ sessionID: session.id, limit: 2, before: a.cursor! })
+        const b = MessageV2.page({ sessionID: session.id, limit: 2, before: a.before! })
 
         expect(a.items.map((item) => item.info.id)).toEqual(ids.slice(-2))
         expect(b.items.map((item) => item.info.id)).toEqual(ids.slice(0, 2))
@@ -293,11 +303,11 @@ describe("MessageV2.page", () => {
 
         const a = MessageV2.page({ sessionID: session.id, limit: 2 })
         expect(a.items.map((item) => item.info.id)).toEqual(ids.slice(-2))
-        expect(a.more).toBe(true)
+        expect(a.before).toBeTruthy()
 
-        const b = MessageV2.page({ sessionID: session.id, limit: 2, before: a.cursor! })
+        const b = MessageV2.page({ sessionID: session.id, limit: 2, before: a.before! })
         expect(b.items.map((item) => item.info.id)).toEqual(ids.slice(0, 2))
-        expect(b.more).toBe(false)
+        expect(b.before).toBeUndefined()
 
         await svc.remove(session.id)
       },
@@ -336,8 +346,53 @@ describe("MessageV2.page", () => {
         const result = MessageV2.page({ sessionID: session.id, limit: 100 })
         expect(result.items).toHaveLength(10)
         expect(result.items.map((item) => item.info.id)).toEqual(ids)
-        expect(result.more).toBe(false)
-        expect(result.cursor).toBeUndefined()
+        expect(result.before).toBeUndefined()
+        expect(result.after).toBeUndefined()
+
+        await svc.remove(session.id)
+      },
+    })
+  })
+
+  test("pages forward with after cursors and oldest jump", async () => {
+    await WithInstance.provide({
+      directory: root,
+      fn: async () => {
+        const session = await svc.create({})
+        const ids = await fill(session.id, 6)
+
+        const oldest = MessageV2.page({ sessionID: session.id, limit: 2, oldest: true })
+        expect(oldest.items.map((item) => item.info.id)).toEqual(ids.slice(0, 2))
+        expect(oldest.before).toBeUndefined()
+        expect(oldest.after).toBeTruthy()
+
+        const middle = MessageV2.page({ sessionID: session.id, limit: 2, after: oldest.after! })
+        expect(middle.items.map((item) => item.info.id)).toEqual(ids.slice(2, 4))
+        expect(middle.before).toBeTruthy()
+        expect(middle.after).toBeTruthy()
+
+        const latest = MessageV2.page({ sessionID: session.id, limit: 2, after: middle.after! })
+        expect(latest.items.map((item) => item.info.id)).toEqual(ids.slice(4, 6))
+        expect(latest.before).toBeTruthy()
+        expect(latest.after).toBeUndefined()
+
+        await svc.remove(session.id)
+      },
+    })
+  })
+
+  test("rejects incompatible cursor combinations", async () => {
+    await WithInstance.provide({
+      directory: root,
+      fn: async () => {
+        const session = await svc.create({})
+        await fill(session.id, 2)
+
+        const seed = MessageV2.page({ sessionID: session.id, limit: 1 })
+        expect(() =>
+          MessageV2.page({ sessionID: session.id, limit: 1, before: seed.before!, after: seed.before! }),
+        ).toThrow()
+        expect(() => MessageV2.page({ sessionID: session.id, limit: 1, oldest: true, before: seed.before! })).toThrow()
 
         await svc.remove(session.id)
       },
@@ -1049,19 +1104,27 @@ describe("MessageV2.filterCompacted", () => {
   })
 
   test("works with array input", () => {
-    // filterCompacted accepts any Iterable, not just generators
+    const sessionID = SessionID.descending()
     const id = MessageID.ascending()
     const items: MessageV2.WithParts[] = [
       {
         info: {
           id,
-          sessionID: "s1",
+          sessionID,
           role: "user",
           time: { created: 1 },
           agent: "test",
-          model: { providerID: "test", modelID: "test" },
-        } as unknown as MessageV2.Info,
-        parts: [{ type: "text", text: "hello" }] as unknown as MessageV2.Part[],
+          model: { providerID: ProviderID.make("test"), modelID: ModelID.make("test") },
+        } satisfies MessageV2.User,
+        parts: [
+          {
+            id: PartID.ascending(),
+            sessionID,
+            messageID: id,
+            type: "text",
+            text: "hello",
+          } satisfies MessageV2.TextPart,
+        ],
       },
     ]
     const result = MessageV2.filterCompacted(items)
@@ -1144,8 +1207,8 @@ describe("MessageV2 consistency", () => {
           for (let i = result.items.length - 1; i >= 0; i--) {
             paged.push(result.items[i])
           }
-          if (!result.more || !result.cursor) break
-          cursor = result.cursor
+          if (!result.before) break
+          cursor = result.before
         }
 
         expect(streamed.map((m) => m.info.id)).toEqual(paged.map((m) => m.info.id))
