@@ -24,6 +24,7 @@ import { isRecord } from "@/util/record"
 import { SyncEvent } from "@/sync"
 import { SessionEvent } from "@/v2/session-event"
 import { Modelv2 } from "@/v2/model"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import * as DateTime from "effect/DateTime"
 import { Flag } from "@opencode-ai/core/flag/flag"
 
@@ -503,6 +504,13 @@ export const layer: Layer.Layer<
               usage: value.usage,
               metadata: value.providerMetadata,
             })
+            if (Flag.OPENCODE_EXPERIMENTAL_CACHE_AUDIT) {
+              const totalInputTokens = usage.tokens.input + usage.tokens.cache.read + usage.tokens.cache.write
+              const cacheHitPercent = totalInputTokens > 0 ? ((usage.tokens.cache.read / totalInputTokens) * 100).toFixed(1) : "0.0"
+              log.info(
+                `[CACHE] ${ctx.model.id}  input=${totalInputTokens} (cache_read=${usage.tokens.cache.read} cache_write=${usage.tokens.cache.write} new=${usage.tokens.input})  hit=${cacheHitPercent}%  output=${usage.tokens.output}  total=${usage.tokens.total ?? 0}`,
+              )
+            }
             if (!ctx.assistantMessage.summary) {
               // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
               if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
