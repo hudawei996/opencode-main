@@ -10,6 +10,7 @@ type SmokeState = {
   ids: string[]
   visibleIds: string[]
   topVisibleId?: string
+  seenVisible: string[]
   signature: string
   scrollTop: number
   scrollHeight: number
@@ -21,6 +22,7 @@ type SmokeState = {
 type SmokeWindow = Window & {
   __timelineSmokeErrorToasts?: string[]
   __timelineSmokeForbiddenText?: string[]
+  __timelineSmokeSeenVisible?: Set<string>
   __timelineSmokeState?: () => SmokeState
 }
 
@@ -50,13 +52,13 @@ test.describe("smoke: session timeline", () => {
     await expect(page.locator('[data-component="tool-part-wrapper"]').first()).toBeVisible()
 
     const expected = fixture.expected.targetPartIDs
-    const seenVisible = new Set<string>()
     const samples: TraversalSample[] = []
     await pointAtTimeline(page)
-    await traverseTimelineUp(page, expected, seenVisible, samples, errors)
-    if (seenVisible.size < expected.length) await traverseTimelineDown(page, expected, seenVisible, samples, errors)
+    await warmupTimeline(page, expected)
+    await traverseTimelineUp(page, expected, samples, errors)
 
     const actual = await timelineState(page)
+    const seenVisible = new Set(actual.seenVisible)
     expectOrderedPartIDs(expected, actual.ids, "mounted")
     expectOrderedPartIDs(expected, actual.visibleIds, "visible")
     expect(expected.filter((id) => !seenVisible.has(id)), `missing visible timeline parts: ${missingSummary(expected, seenVisible)}\n${sampleSummary(samples)}`).toEqual([])
@@ -92,6 +94,39 @@ async function configureSmokePage(page: Page) {
     const smoke = window as SmokeWindow
     smoke.__timelineSmokeErrorToasts = []
     smoke.__timelineSmokeForbiddenText = []
+    smoke.__timelineSmokeSeenVisible = new Set<string>()
+    const partSelector = "[data-timeline-part-id], [data-timeline-part-ids]"
+    const idsOf = (el: HTMLElement) =>
+      [el.dataset.timelinePartId, ...(el.dataset.timelinePartIds?.split(",") ?? [])].filter((id): id is string => !!id)
+    let observerScroller: HTMLElement | undefined
+    const installObserver = (scroller: HTMLElement) => {
+      if (observerScroller === scroller) return
+      observerScroller = scroller
+      const seen = smoke.__timelineSmokeSeenVisible!
+      const intersection = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue
+            for (const id of idsOf(entry.target as HTMLElement)) seen.add(id)
+          }
+        },
+        { root: scroller, threshold: 0 },
+      )
+      const observe = (root: ParentNode) => {
+        for (const el of root.querySelectorAll<HTMLElement>(partSelector)) intersection.observe(el)
+      }
+      observe(scroller)
+      const mutations = new MutationObserver((muts) => {
+        for (const mut of muts) {
+          for (const node of mut.addedNodes) {
+            if (!(node instanceof HTMLElement)) continue
+            if (node.matches(partSelector)) intersection.observe(node)
+            observe(node)
+          }
+        }
+      })
+      mutations.observe(scroller, { childList: true, subtree: true })
+    }
     smoke.__timelineSmokeState = () => {
       const scroller = [...document.querySelectorAll<HTMLElement>(".scroll-view__viewport")].find((el) =>
         el.querySelector('[data-slot="session-turn-list"]'),
@@ -102,6 +137,7 @@ async function configureSmokePage(page: Page) {
           ids: [],
           visibleIds: [],
           topVisibleId: undefined,
+          seenVisible: [...(smoke.__timelineSmokeSeenVisible ?? [])],
           signature: "",
           scrollTop: 0,
           scrollHeight: 0,
@@ -111,14 +147,14 @@ async function configureSmokePage(page: Page) {
         }
       }
 
+      installObserver(scroller)
+
       const ids: string[] = []
       const visibleIds: string[] = []
       const scrollerRect = scroller.getBoundingClientRect()
       let topVisibleId: string | undefined
-      for (const el of root.querySelectorAll<HTMLElement>("[data-timeline-part-id], [data-timeline-part-ids]")) {
-        const next = [el.dataset.timelinePartId, ...(el.dataset.timelinePartIds?.split(",") ?? [])].filter(
-          (id): id is string => !!id,
-        )
+      for (const el of root.querySelectorAll<HTMLElement>(partSelector)) {
+        const next = idsOf(el)
         ids.push(...next)
 
         const rect = el.getBoundingClientRect()
@@ -144,6 +180,7 @@ async function configureSmokePage(page: Page) {
         ids,
         visibleIds,
         topVisibleId,
+        seenVisible: [...(smoke.__timelineSmokeSeenVisible ?? [])],
         signature,
         scrollTop: Math.round(scroller.scrollTop),
         scrollHeight: Math.round(scroller.scrollHeight),
@@ -240,21 +277,14 @@ function timelineScroller(page: Page) {
   return page.locator(".scroll-view__viewport", { has: page.locator('[data-slot="session-turn-list"]') })
 }
 
-async function traverseTimelineUp(
-  page: Page,
-  expected: string[],
-  seenVisible: Set<string>,
-  samples: TraversalSample[],
-  errors: string[],
-) {
+async function traverseTimelineUp(page: Page, expected: string[], samples: TraversalSample[], errors: string[]) {
   let unchanged = 0
   for (let attempt = 0; attempt < expected.length * 3; attempt++) {
     const current = await timelineState(page)
     expectNoSmokeErrors(current, errors)
     expectOrderedPartIDs(expected, current.ids, "mounted")
     expectOrderedPartIDs(expected, current.visibleIds, "visible")
-    for (const id of current.visibleIds) seenVisible.add(id)
-    samples.push(sampleTraversal(current, seenVisible.size))
+    samples.push(sampleTraversal(current, current.seenVisible.length))
     if (isTimelineTop(current, expected)) return current
 
     const scrolled = await scrollTimelineUp(page, current)
@@ -272,54 +302,33 @@ async function traverseTimelineUp(
   throw new Error(`timeline upward traversal exceeded expected attempts\n${sampleSummary(samples)}`)
 }
 
-async function traverseTimelineDown(
-  page: Page,
-  expected: string[],
-  seenVisible: Set<string>,
-  samples: TraversalSample[],
-  errors: string[],
-) {
-  let unchanged = 0
-  for (let attempt = 0; attempt < expected.length * 3 && seenVisible.size < expected.length; attempt++) {
-    const current = await timelineState(page)
-    expectNoSmokeErrors(current, errors)
-    expectOrderedPartIDs(expected, current.ids, "mounted")
-    expectOrderedPartIDs(expected, current.visibleIds, "visible")
-    for (const id of current.visibleIds) seenVisible.add(id)
-    samples.push(sampleTraversal(current, seenVisible.size))
-    if (seenVisible.size === expected.length) return current
-
-    const scrolled = await scrollTimeline(page, current, 1)
-    if (scrolled.moved) {
-      unchanged = 0
-      continue
-    }
-
-    unchanged++
-    if (unchanged >= 3) return current
-    await pointAtTimeline(page)
-  }
-}
-
 async function scrollTimelineUp(page: Page, before: SmokeState) {
-  return scrollTimeline(page, before, -1)
-}
-
-async function scrollTimeline(page: Page, before: SmokeState, direction: 1 | -1) {
-  await page.mouse.wheel(0, direction * Math.max(1, Math.round(before.clientHeight / 2)))
+  await page.mouse.wheel(0, -Math.max(1, Math.round(before.clientHeight / 2)))
   return {
     moved: await page.evaluate(
       (prev) =>
         new Promise<boolean>((resolve) => {
+          const read = () => (window as SmokeWindow).__timelineSmokeState?.().signature ?? ""
           let frames = 0
+          let stableSince: string | undefined
+          let stableFrames = 0
           const check = () => {
-            if (((window as SmokeWindow).__timelineSmokeState?.().signature ?? "") !== prev) {
-              resolve(true)
-              return
+            const current = read()
+            if (current !== prev) {
+              if (current === stableSince) {
+                stableFrames++
+                if (stableFrames >= 3) {
+                  resolve(true)
+                  return
+                }
+              } else {
+                stableSince = current
+                stableFrames = 1
+              }
             }
             frames++
-            if (frames >= 120) {
-              resolve(false)
+            if (frames >= 240) {
+              resolve(current !== prev)
               return
             }
             requestAnimationFrame(check)
@@ -335,6 +344,35 @@ async function pointAtTimeline(page: Page) {
   const box = await timelineScroller(page).boundingBox()
   if (!box) throw new Error("Timeline scroller is not visible")
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+}
+
+async function warmupTimeline(page: Page, expected: string[]) {
+  let unchanged = 0
+  for (let attempt = 0; attempt < expected.length * 3; attempt++) {
+    const before = await timelineState(page)
+    if (isTimelineTop(before, expected)) break
+    const scrolled = await scrollTimelineUp(page, before)
+    if (scrolled.moved) {
+      unchanged = 0
+      continue
+    }
+    unchanged++
+    if (unchanged >= 3) throw new Error(`timeline warmup stalled at scrollTop=${before.scrollTop}`)
+    await pointAtTimeline(page)
+  }
+  await page.evaluate(() => {
+    const scroller = [...document.querySelectorAll<HTMLElement>(".scroll-view__viewport")].find((el) =>
+      el.querySelector('[data-slot="session-turn-list"]'),
+    )
+    if (scroller) scroller.scrollTop = scroller.scrollHeight
+  })
+  await page.waitForFunction(() => {
+    const scroller = [...document.querySelectorAll<HTMLElement>(".scroll-view__viewport")].find((el) =>
+      el.querySelector('[data-slot="session-turn-list"]'),
+    )
+    if (!scroller) return false
+    return scroller.scrollTop >= scroller.scrollHeight - scroller.clientHeight - 1
+  })
 }
 
 function missingSummary(expected: string[], seen: Set<string>) {
@@ -353,6 +391,7 @@ async function timelineState(page: Page) {
         ids: [],
         visibleIds: [],
         topVisibleId: undefined,
+        seenVisible: [],
         signature: "",
         scrollTop: 0,
         scrollHeight: 0,
