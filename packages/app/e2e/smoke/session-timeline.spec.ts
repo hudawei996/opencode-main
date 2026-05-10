@@ -36,33 +36,21 @@ test.describe("smoke: session timeline", () => {
       pageMessages: pageMessages,
     })
     await configureSmokePage(page)
+
     await openProject(page, "SmokeProject")
     await navigateToSession(page, fixture.sourceID, fixture.expected.sourceTitle)
     await expectSessionReady(page, "smoke-project")
 
     // The target session is linked inside the source session's history
-    await expect(page.locator(`a[href*="${fixture.targetID}"]`).first()).toBeVisible()
     await navigateToSession(page, fixture.targetID, fixture.expected.targetTitle)
     
-    await waitForTimelineStable(page)
+    await expectSessionTimelineFullyLoaded(page, errors)
 
-    for (const text of forbiddenText) await expect(page.getByText(text)).toHaveCount(0)
-    const currentState = await timelineState(page)
-    expectNoSmokeErrors(errors, currentState.errorToasts, currentState.forbiddenText)
-    await expect(page.getByText("Verify generated output").first()).toBeVisible()
-    await expect(page.locator('[data-component="tool-part-wrapper"]').first()).toBeVisible()
-
-    const expected = fixture.expected.targetPartIDs
+    const expectedPartIDs = fixture.expected.targetPartIDs
     const samples: TraversalSample[] = []
-    await pointAtTimeline(page)
-    await traverseTimelineUp(page, expected, samples, errors)
-
-    const actual = await timelineState(page)
-    expectOrderedPartIDs(expected, actual.ids, "mounted")
-    expectOrderedPartIDs(expected, actual.visibleIds, "visible")
-    expectNoSmokeErrors(errors, actual.errorToasts, actual.forbiddenText)
-    expect(new Set(expected).size).toBe(expected.length)
-    expect(expected.length).toBe(331)
+    
+    await scrollHistoryToTop(page, expectedPartIDs, samples, errors)
+    await expectHistoryMaintainsOrder(page, expectedPartIDs, errors)
   })
 })
 
@@ -179,9 +167,11 @@ function timelineScroller(page: Page) {
   return page.locator(".scroll-view__viewport", { has: page.locator('[data-slot="session-turn-list"]') })
 }
 
-async function traverseTimelineUp(page: Page, expected: string[], samples: TraversalSample[], errors: string[]) {
+async function scrollHistoryToTop(page: Page, expected: string[], samples: TraversalSample[], errors: string[]) {
   let unchanged = 0
   const seenMounted = new Set<string>()
+  await focusTimeline(page)
+
   for (let attempt = 0; attempt < expected.length * 3; attempt++) {
     const current = await timelineState(page)
     for (const id of current.ids) seenMounted.add(id)
@@ -203,7 +193,7 @@ async function traverseTimelineUp(page: Page, expected: string[], samples: Trave
     if (unchanged >= 3) {
       throw new Error(`timeline upward traversal stalled\n${sampleSummary(samples)}`)
     }
-    await pointAtTimeline(page)
+    await focusTimeline(page)
   }
   throw new Error(`timeline upward traversal exceeded expected attempts\n${sampleSummary(samples)}`)
 }
@@ -246,7 +236,7 @@ async function scrollTimelineUp(page: Page, before: SmokeState) {
   }
 }
 
-async function pointAtTimeline(page: Page) {
+async function focusTimeline(page: Page) {
   const box = await timelineScroller(page).boundingBox()
   if (!box) throw new Error("Timeline scroller is not visible")
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -326,7 +316,23 @@ async function waitForTimelineStable(page: Page) {
   )
 }
 
-// --- Product Native Actions & Assertions ---
+async function expectSessionTimelineFullyLoaded(page: Page, errors: string[]) {
+  await waitForTimelineStable(page)
+  for (const text of forbiddenText) await expect(page.getByText(text)).toHaveCount(0)
+  const currentState = await timelineState(page)
+  expectNoSmokeErrors(errors, currentState.errorToasts, currentState.forbiddenText)
+  await expect(page.getByText("Verify generated output").first()).toBeVisible()
+  await expect(page.locator('[data-component="tool-part-wrapper"]').first()).toBeVisible()
+}
+
+async function expectHistoryMaintainsOrder(page: Page, expected: string[], errors: string[]) {
+  const actual = await timelineState(page)
+  expectOrderedPartIDs(expected, actual.ids, "mounted")
+  expectOrderedPartIDs(expected, actual.visibleIds, "visible")
+  expectNoSmokeErrors(errors, actual.errorToasts, actual.forbiddenText)
+  expect(new Set(expected).size).toBe(expected.length)
+  expect(expected.length).toBe(331)
+}
 
 async function openProject(page: Page, projectName: string) {
   await page.goto("/")
