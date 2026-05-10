@@ -1,9 +1,8 @@
-import { expect, test, type Page, type Route } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 import { fixture, pageMessages } from "./session-timeline.fixture"
+import { trackPageErrors, expectNoSmokeErrors } from "../utils/errors"
+import { mockOpenCodeServer } from "../utils/mock-server"
 
-const errorToastSelector = '[data-component="toast"][data-variant="error"]'
-const emptyList = new Set(["/skill", "/command", "/lsp", "/formatter", "/permission", "/question"])
-const emptyObject = new Set(["/global/config", "/config", "/provider/auth", "/mcp", "/session/status"])
 const forbiddenText = ["Load details", "Show earlier steps"]
 
 type SmokeState = {
@@ -28,8 +27,14 @@ test.describe("smoke: session timeline", () => {
   test.setTimeout(300_000)
 
   test("renders seeded timeline in order while paging through history", async ({ page }) => {
-    const errors = captureErrors(page)
-    await mockApi(page)
+    const errors = trackPageErrors(page)
+    await mockOpenCodeServer(page, {
+      sessions: fixture.sessions,
+      provider: fixture.provider,
+      directory: fixture.directory,
+      project: fixture.project,
+      pageMessages: pageMessages,
+    })
     await configureSmokePage(page)
     await page.goto("/")
     await page.getByRole("button", { name: /SmokeProject/ }).click()
@@ -45,7 +50,8 @@ test.describe("smoke: session timeline", () => {
     await waitForTimelineStable(page)
 
     for (const text of forbiddenText) await expect(page.getByText(text)).toHaveCount(0)
-    expectNoSmokeErrors(await timelineState(page), errors)
+    const currentState = await timelineState(page)
+    expectNoSmokeErrors(errors, currentState.errorToasts, currentState.forbiddenText)
     await expect(page.getByText("Verify generated output").first()).toBeVisible()
     await expect(page.locator('[data-component="tool-part-wrapper"]').first()).toBeVisible()
 
@@ -57,20 +63,12 @@ test.describe("smoke: session timeline", () => {
     const actual = await timelineState(page)
     expectOrderedPartIDs(expected, actual.ids, "mounted")
     expectOrderedPartIDs(expected, actual.visibleIds, "visible")
-    expectNoSmokeErrors(actual, errors)
+    expectNoSmokeErrors(errors, actual.errorToasts, actual.forbiddenText)
     expect(new Set(expected).size).toBe(expected.length)
     expect(expected.length).toBe(331)
   })
 })
 
-function captureErrors(page: Page) {
-  const errors: string[] = []
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text())
-  })
-  page.on("pageerror", (error) => errors.push(error.stack ?? error.message))
-  return errors
-}
 
 async function configureSmokePage(page: Page) {
   await page.addInitScript(() => {
@@ -179,66 +177,6 @@ async function configureSmokePage(page: Page) {
   })
 }
 
-function expectNoSmokeErrors(state: SmokeState, consoleErrors: string[]) {
-  expect({ consoleErrors, toastErrors: state.errorToasts, forbiddenText: state.forbiddenText }).toEqual({
-    consoleErrors: [],
-    toastErrors: [],
-    forbiddenText: [],
-  })
-}
-
-async function mockApi(page: Page) {
-  await page.route("**/*", async (route) => {
-    const url = new URL(route.request().url())
-    if (url.port !== "4096") return route.fallback()
-    return handleApi(route, url)
-  })
-}
-
-async function handleApi(route: Route, url: URL) {
-  const path = url.pathname
-  if (path === "/global/event" || path === "/event") return sse(route)
-  if (emptyObject.has(path)) return json(route, {})
-  if (path === "/provider") return json(route, fixture.provider)
-  if (path === "/path")
-    return json(route, {
-      state: fixture.directory,
-      config: fixture.directory,
-      worktree: fixture.directory,
-      directory: fixture.directory,
-      home: "C:/OpenCode",
-    })
-  if (path === "/project" || path === "/project/current")
-    return json(route, path === "/project" ? [fixture.project] : fixture.project)
-  if (path === "/agent") return json(route, [{ name: "build", mode: "primary" }])
-  if (emptyList.has(path)) return json(route, [])
-  if (path === "/vcs") return json(route, { branch: "main", default_branch: "main" })
-  if (path === "/vcs/status" || path === "/vcs/diff") return json(route, [])
-  if (path === "/session") return json(route, fixture.sessions)
-
-  const sessionMatch = path.match(/^\/session\/([^/]+)$/)
-  if (sessionMatch) return json(route, fixture.sessions.find((session) => session.id === sessionMatch[1]))
-
-  if (/^\/session\/[^/]+\/(children|todo|diff)$/.test(path)) return json(route, [])
-
-  const messagesMatch = path.match(/^\/session\/([^/]+)\/message$/)
-  if (messagesMatch) {
-    const limit = Number(url.searchParams.get("limit") ?? 80)
-    const before = url.searchParams.get("before") ?? undefined
-    const page = pageMessages(messagesMatch[1], limit, before)
-    return json(route, page.items, page.cursor ? { "x-next-cursor": page.cursor } : undefined)
-  }
-
-  return json(route, {})
-}
-
-function json(route: Route, body: unknown, headers?: Record<string, string>) {
-  return route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify(body ?? null) })
-}
-
-function sse(route: Route) {
-  return route.fulfill({ status: 200, contentType: "text/event-stream", body: ": ok\n\n" })
-}
 
 function timelineScroller(page: Page) {
   return page.locator(".scroll-view__viewport", { has: page.locator('[data-slot="session-turn-list"]') })
@@ -250,7 +188,7 @@ async function traverseTimelineUp(page: Page, expected: string[], samples: Trave
   for (let attempt = 0; attempt < expected.length * 3; attempt++) {
     const current = await timelineState(page)
     for (const id of current.ids) seenMounted.add(id)
-    expectNoSmokeErrors(current, errors)
+    expectNoSmokeErrors(errors, current.errorToasts, current.forbiddenText)
     expectOrderedPartIDs(expected, current.ids, "mounted")
     expectOrderedPartIDs(expected, current.visibleIds, "visible")
     samples.push(sampleTraversal(current, seenMounted.size))
