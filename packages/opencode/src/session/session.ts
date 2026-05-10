@@ -418,6 +418,8 @@ export const getUsage = (input: { model: Provider.Model; usage: LanguageModelUsa
     },
   }
 
+  const rawInputTokens = inputTokens
+
   const costInfo =
     input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000
       ? input.model.cost.experimentalOver200K
@@ -435,6 +437,7 @@ export const getUsage = (input: { model: Provider.Model; usage: LanguageModelUsa
         .toNumber(),
     ),
     tokens,
+    rawInputTokens,
   }
 }
 
