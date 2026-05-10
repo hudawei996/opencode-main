@@ -94,10 +94,8 @@ async function configureSmokePage(page: Page) {
       [el.dataset.timelinePartId, ...(el.dataset.timelinePartIds?.split(",") ?? [])].filter((id): id is string => !!id)
     
     smoke.__timelineSmokeState = () => {
-      const scroller = [...document.querySelectorAll<HTMLElement>(".scroll-view__viewport")].find((el) =>
-        el.querySelector('[data-slot="session-turn-list"]'),
-      )
       const root = document.querySelector('[data-slot="session-turn-list"]')
+      const scroller = root?.closest<HTMLElement>(".scroll-view__viewport")
       if (!scroller || !root) {
         return {
           ids: [],
@@ -151,6 +149,7 @@ async function configureSmokePage(page: Page) {
         forbiddenText: smoke.__timelineSmokeForbiddenText ?? [],
       }
     }
+    let recordFrame: number | undefined
     const record = () => {
       for (const toast of document.querySelectorAll<HTMLElement>('[data-component="toast"][data-variant="error"]')) {
         const text = toast.textContent?.trim()
@@ -166,7 +165,13 @@ async function configureSmokePage(page: Page) {
     const start = () => {
       const root = document.documentElement ?? document.body
       if (!root) return
-      new MutationObserver(record).observe(root, { childList: true, subtree: true })
+      new MutationObserver(() => {
+        if (recordFrame) return
+        recordFrame = requestAnimationFrame(() => {
+          recordFrame = undefined
+          record()
+        })
+      }).observe(root, { childList: true, subtree: true })
       record()
     }
     if (document.documentElement ?? document.body) start()
@@ -314,10 +319,6 @@ async function pointAtTimeline(page: Page) {
 
 
 
-function missingSummary(expected: string[], seen: Set<string>) {
-  const missing = expected.filter((id) => !seen.has(id))
-  return `${missing.length}/${expected.length} ${missing.slice(0, 20).join(", ")}`
-}
 
 function isTimelineTop(state: SmokeState, expected: string[]) {
   return state.scrollTop <= 0 && state.ids[0] === expected[0]
