@@ -58,7 +58,7 @@ function setup() {
   })
   spyOn(UI, "error").mockImplementation(() => {})
   spyOn(Timeout, "withTimeout").mockImplementation((input) => input)
-  spyOn(Network, "resolveNetworkOptions").mockResolvedValue({
+  spyOn(Network, "resolveNetworkOptionsNoConfig").mockReturnValue({
     mdns: false,
     port: 0,
     hostname: "127.0.0.1",
