@@ -36,17 +36,14 @@ test.describe("smoke: session timeline", () => {
       pageMessages: pageMessages,
     })
     await configureSmokePage(page)
-    await page.goto("/")
-    await page.getByRole("button", { name: /SmokeProject/ }).click()
-    await page.locator(`a[href*="${fixture.sourceID}"]`).first().evaluate((el) => el.click())
+    await openProject(page, "SmokeProject")
+    await navigateToSession(page, fixture.sourceID, fixture.expected.sourceTitle)
+    await expectSessionReady(page, "smoke-project")
 
-    await expect(page.getByRole("heading", { name: fixture.expected.sourceTitle })).toBeVisible()
-    await expect(page.getByText("smoke-project").first()).toBeVisible()
-    await expect(page.getByText("Ask anything...")).toBeVisible()
+    // The target session is linked inside the source session's history
     await expect(page.locator(`a[href*="${fixture.targetID}"]`).first()).toBeVisible()
-
-    await page.locator(`a[href*="${fixture.targetID}"]`).first().evaluate((el) => el.click())
-    await expect(page.getByRole("heading", { name: fixture.expected.targetTitle })).toBeVisible()
+    await navigateToSession(page, fixture.targetID, fixture.expected.targetTitle)
+    
     await waitForTimelineStable(page)
 
     for (const text of forbiddenText) await expect(page.getByText(text)).toHaveCount(0)
@@ -327,4 +324,22 @@ async function waitForTimelineStable(page: Page) {
         })
       }),
   )
+}
+
+// --- Product Native Actions & Assertions ---
+
+async function openProject(page: Page, projectName: string) {
+  await page.goto("/")
+  await page.getByRole("button", { name: new RegExp(projectName, "i") }).click()
+}
+
+async function navigateToSession(page: Page, sessionId: string, expectedTitle: string) {
+  // Use evaluate to click to avoid strict visibility/animation issues during rapid e2e navigation
+  await page.locator(`a[href*="${sessionId}"]`).first().evaluate((el) => (el as HTMLElement).click())
+  await expect(page.getByRole("heading", { name: expectedTitle })).toBeVisible()
+}
+
+async function expectSessionReady(page: Page, projectName: string) {
+  await expect(page.getByText(projectName).first()).toBeVisible()
+  await expect(page.getByText("Ask anything...")).toBeVisible()
 }
