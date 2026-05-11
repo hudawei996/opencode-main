@@ -37,7 +37,7 @@ export function withNetworkOptions<T>(yargs: Argv<T>) {
   return yargs.options(options)
 }
 export const resolveNetworkOptions = Effect.fn("Cli.resolveNetworkOptions")(function* (args: NetworkOptions) {
-  const config = yield* Config.Service.use((cfg) => cfg.getGlobal())
+  const config = yield* Config.Service.use((cfg) => cfg.getGlobalWithOverrides())
   return resolveNetworkOptionsNoConfig(args, config)
 })
 
