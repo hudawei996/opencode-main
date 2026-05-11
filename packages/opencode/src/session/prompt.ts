@@ -200,7 +200,7 @@ export const layer = Layer.effect(
     const summary = yield* SessionSummary.Service
     const sys = yield* SystemPrompt.Service
     const llm = yield* LLM.Service
-    const references = yield* Reference.Service
+
     const sync = yield* SyncEvent.Service
     const runner = Effect.fn("SessionPrompt.runner")(function* () {
       return yield* EffectBridge.make()
@@ -1575,7 +1575,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             text: nextPrompt.text.join("\n"),
             files: nextPrompt.files,
             agents: nextPrompt.agents,
-            references: nextPrompt.references,
+
           },
         })
       }

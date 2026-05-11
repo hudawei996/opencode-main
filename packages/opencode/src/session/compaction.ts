@@ -588,6 +588,7 @@ export const layer: Layer.Layer<
             sessionID: input.sessionID,
             timestamp: DateTime.makeUnsafe(Date.now()),
             text: summary ?? "",
+
           })
         }
         yield* bus.publish(Event.Compacted, { sessionID: input.sessionID })
