@@ -1,6 +1,8 @@
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { InternalTuiPlugin } from "../../plugin/internal"
 import { createMemo, For, Show, createSignal } from "solid-js"
+import openFile from "open"
+import path from "path"
 
 const id = "internal:sidebar-files"
 
@@ -23,8 +25,13 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
         <Show when={list().length <= 2 || open()}>
           <For each={list()}>
             {(item) => (
-              <box flexDirection="row" gap={1} justifyContent="space-between">
-                <text fg={theme().textMuted} wrapMode="none">
+              <box
+                flexDirection="row"
+                gap={1}
+                justifyContent="space-between"
+                onMouseUp={() => openFile(path.resolve(props.api.state.path.directory, item.file)).catch(() => {})}
+              >
+                <text fg={theme().primary} wrapMode="none">
                   {item.file}
                 </text>
                 <box flexDirection="row" gap={1} flexShrink={0}>
