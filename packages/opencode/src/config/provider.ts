@@ -74,8 +74,18 @@ export const Info = Schema.Struct({
   env: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
   id: Schema.optional(Schema.String),
   npm: Schema.optional(Schema.String),
-  whitelist: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
-  blacklist: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  whitelist: Schema.optional(
+    Schema.mutable(Schema.Array(Schema.String)).annotate({
+      description:
+        "Allowed model filters. Plain strings match exact model IDs. Entries wrapped in /.../ are regex patterns matched against model IDs. Invalid regex patterns are ignored. Regex flags are not supported.",
+    }),
+  ),
+  blacklist: Schema.optional(
+    Schema.mutable(Schema.Array(Schema.String)).annotate({
+      description:
+        "Blocked model filters. Plain strings match exact model IDs. Entries wrapped in /.../ are regex patterns matched against model IDs. Invalid regex patterns are ignored. Regex flags are not supported.",
+    }),
+  ),
   options: Schema.optional(
     Schema.StructWithRest(
       Schema.Struct({
