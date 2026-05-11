@@ -57,7 +57,7 @@ probado y verificado para funcionar bien con OpenCode. [Más información](/docs
 Si eres nuevo, te recomendamos comenzar con OpenCode Zen.
 :::
 
-1. Ejecute el comando `/connect` en TUI, seleccione opencode y diríjase a [opencode.ai/auth](https://opencode.ai/auth).
+1. Ejecute el comando `/connect` en TUI, seleccione `OpenCode Zen` y diríjase a [opencode.ai/auth](https://opencode.ai/auth).
 
    ```txt
    /connect
@@ -167,6 +167,8 @@ Para usar Amazon Bedrock con OpenCode:
 
 2. **Configure la autenticación** utilizando uno de los siguientes métodos:
 
+   ***
+
    #### Variables de entorno (Inicio rápido)
 
    Establezca una de estas variables de entorno mientras ejecuta opencode:
@@ -188,6 +190,8 @@ Para usar Amazon Bedrock con OpenCode:
    export AWS_PROFILE=my-dev-profile
    export AWS_REGION=us-east-1
    ```
+
+   ***
 
    #### Archivo de configuración (recomendado)
 
@@ -216,6 +220,8 @@ Para usar Amazon Bedrock con OpenCode:
    Las opciones del archivo de configuración tienen prioridad sobre las variables de entorno.
    :::
 
+   ***
+
    #### Avanzado: puntos finales de la VPC
 
    Si utiliza puntos de enlace de VPC para Bedrock:
@@ -239,11 +245,15 @@ Para usar Amazon Bedrock con OpenCode:
    La opción `endpoint` es un alias para la opción genérica `baseURL`, que utiliza terminología específica de AWS. Si se especifican `endpoint` y `baseURL`, `endpoint` tiene prioridad.
    :::
 
+   ***
+
    #### Métodos de autenticación
    - **`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`**: Crear un usuario de IAM y generar claves de acceso en la Consola AWS
    - **`AWS_PROFILE`**: Utilice perfiles con nombre de `~/.aws/credentials`. Primero configure con `aws configure --profile my-profile` o `aws sso login`
    - **`AWS_BEARER_TOKEN_BEDROCK`**: Genera claves API a largo plazo desde la consola Amazon Bedrock
    - **`AWS_WEB_IDENTITY_TOKEN_FILE` / `AWS_ROLE_ARN`**: Para EKS IRSA (Roles IAM para Cuentas de Servicio) u otros entornos de Kubernetes con federación OIDC. Kubernetes inyecta automáticamente estas variables de entorno cuando se utilizan anotaciones de cuentas de servicio.
+
+   ***
 
    #### Prioridad de autenticación
 
@@ -292,14 +302,11 @@ Para perfiles de inferencia personalizados, utilice el modelo y el nombre del pr
    /connect
    ```
 
-2. Aquí puedes seleccionar la opción **Claude Pro/Max** y se abrirá tu navegador.
-   y pedirle que se autentique.
+2. Aquí puedes seleccionar la opción **Manually enter API Key** para configurar tu acceso.
 
    ```txt
    ┌ Select auth method
    │
-   │ Claude Pro/Max
-   │ Create an API Key
    │ Manually enter API Key
    └
    ```
@@ -311,14 +318,16 @@ Para perfiles de inferencia personalizados, utilice el modelo y el nombre del pr
    ```
 
 :::info
-El uso de su suscripción Claude Pro/Max en OpenCode no está oficialmente respaldado por [Anthropic](https://anthropic.com).
-:::
+Existen plugins que permiten usar los modelos Claude Pro/Max con OpenCode, pero Anthropic lo prohíbe explícitamente.
 
-##### Usando las teclas API
+Las versiones anteriores de OpenCode incluían estos plugins, pero dejaron de integrarse a partir de la versión 1.3.0.
 
-También puede seleccionar **Crear una clave API** si no tiene una suscripción Pro/Max. También abrirá su navegador y le pedirá que inicie sesión en Anthropic y le dará un código que puede pegar en su terminal.
+Otras empresas ofrecen mayor libertad de elección mediante herramientas para desarrolladores; en OpenCode puedes utilizar las siguientes suscripciones sin necesidad de configuración adicional:
 
-O si ya tienes una clave API, puedes seleccionar **Ingresar manualmente la clave API** y pegarla en tu terminal.
+- ChatGPT Plus
+- Github Copilot
+- Gitlab Duo
+  :::
 
 ---
 
@@ -516,43 +525,48 @@ Si encuentra errores del tipo "Lo siento, pero no puedo ayudar con esa solicitud
 
 Cloudflare AI Gateway le permite acceder a modelos de OpenAI, Anthropic, Workers AI y más a través de un punto final unificado. Con [Facturación unificada](https://developers.cloudflare.com/ai-gateway/features/unified-billing/) no necesita claves API independientes para cada proveedor.
 
-1. Dirígete al [panel de Cloudflare](https://dash.cloudflare.com/), navega hasta **AI** > **AI Gateway** y crea una nueva puerta de enlace.
+1. Dirígete al [panel de Cloudflare](https://dash.cloudflare.com/), navega hasta **AI** > **AI Gateway** y crea una nueva puerta de enlace. Anota tu **Account ID** y **Gateway ID**.
 
-2. Configure su ID de cuenta y su ID de puerta de enlace como variables de entorno.
-
-   ```bash title="~/.bash_profile"
-   export CLOUDFLARE_ACCOUNT_ID=your-32-character-account-id
-   export CLOUDFLARE_GATEWAY_ID=your-gateway-id
-   ```
-
-3. Ejecute el comando `/connect` y busque **Cloudflare AI Gateway**.
+2. Ejecute el comando `/connect` y busque **Cloudflare AI Gateway**.
 
    ```txt
    /connect
    ```
 
-4. Ingrese su token API de Cloudflare.
+3. Ingrese su **Account ID** cuando se le solicite.
 
    ```txt
-   ┌ API key
+   ┌ Enter your Cloudflare Account ID
    │
    │
    └ enter
    ```
 
-   O configúrelo como una variable de entorno.
+4. Ingrese su **Gateway ID** cuando se le solicite.
 
-   ```bash title="~/.bash_profile"
-   export CLOUDFLARE_API_TOKEN=your-api-token
+   ```txt
+   ┌ Enter your Cloudflare AI Gateway ID
+   │
+   │
+   └ enter
    ```
 
-5. Ejecute el comando `/models` para seleccionar un modelo.
+5. Ingrese su **Cloudflare API token**.
+
+   ```txt
+   ┌ Gateway API token
+   │
+   │
+   └ enter
+   ```
+
+6. Ejecute el comando `/models` para seleccionar un modelo.
 
    ```txt
    /models
    ```
 
-   También puede agregar modelos a través de su configuración opencode.
+   También puede agregar modelos a través de su configuración opencode:
 
    ```json title="opencode.json"
    {
@@ -566,6 +580,59 @@ Cloudflare AI Gateway le permite acceder a modelos de OpenAI, Anthropic, Workers
        }
      }
    }
+   ```
+
+   Alternativamente, puede configurar variables de entorno en lugar de usar `/connect`:
+
+   ```bash title="~/.bash_profile"
+   export CLOUDFLARE_ACCOUNT_ID=your-32-character-account-id
+   export CLOUDFLARE_GATEWAY_ID=your-gateway-id
+   export CLOUDFLARE_API_TOKEN=your-api-token
+   ```
+
+---
+
+### Cloudflare Workers AI
+
+Cloudflare Workers AI le permite ejecutar modelos de IA en la red global de Cloudflare directamente a través de una API REST, sin necesidad de cuentas de proveedor separadas para los modelos admitidos.
+
+1. Dirígete al [panel de Cloudflare](https://dash.cloudflare.com/), navega hasta **Workers AI** y selecciona **Use REST API** para obtener su **Account ID** y crear un token de API.
+
+2. Ejecute el comando `/connect` y busque **Cloudflare Workers AI**.
+
+   ```txt
+   /connect
+   ```
+
+3. Ingrese su **Account ID** cuando se le solicite.
+
+   ```txt
+   ┌ Enter your Cloudflare Account ID
+   │
+   │
+   └ enter
+   ```
+
+4. Ingrese su **Cloudflare API key**.
+
+   ```txt
+   ┌ API key
+   │
+   │
+   └ enter
+   ```
+
+5. Ejecute el comando `/models` para seleccionar un modelo.
+
+   ```txt
+   /models
+   ```
+
+   Alternativamente, puede configurar variables de entorno en lugar de usar `/connect`:
+
+   ```bash title="~/.bash_profile"
+   export CLOUDFLARE_ACCOUNT_ID=your-32-character-account-id
+   export CLOUDFLARE_API_KEY=your-api-token
    ```
 
 ---
@@ -707,7 +774,15 @@ Cloudflare AI Gateway le permite acceder a modelos de OpenAI, Anthropic, Workers
 
 ### GitLab Duo
 
-GitLab Duo proporciona chat agente basado en IA con capacidades de llamada de herramientas nativas a través del proxy Anthropic de GitLab.
+:::caution[Experimental]
+El soporte de GitLab Duo en OpenCode es experimental. Las características, configuración y comportamiento pueden cambiar en futuras versiones.
+:::
+
+OpenCode se integra con la [Plataforma de Agentes de GitLab Duo](https://docs.gitlab.com/user/duo_agent_platform/), proporcionando un chat basado en agentes con tecnología de IA y capacidades nativas de llamada a herramientas.
+
+:::note[Requisitos de licencia]
+La Plataforma de Agentes de GitLab Duo requiere una suscripción **Premium** o **Ultimate** de GitLab. Está disponible en GitLab.com y en GitLab Self-Managed. Consulta los [requisitos previos de la Plataforma de Agentes de GitLab Duo](https://docs.gitlab.com/user/duo_agent_platform/#prerequisites) para obtener más información.
+:::
 
 1. Ejecute el comando `/connect` y seleccione GitLab.
 
@@ -728,10 +803,10 @@ GitLab Duo proporciona chat agente basado en IA con capacidades de llamada de he
 
    #### Usando OAuth (recomendado)
 
-   Seleccione **OAuth** y su navegador se abrirá para autorización.
+   Seleccione **OAuth** y su navegador se abrirá para la autorización.
 
    #### Uso del token de acceso personal
-   1. Vaya a [GitLab Configuración de usuario > Tokens de acceso](https://gitlab.com/-/user_settings/personal_access_tokens)
+   1. Vaya a [Configuración de usuario de GitLab > Tokens de acceso](https://gitlab.com/-/user_settings/personal_access_tokens)
    2. Haga clic en **Agregar nuevo token**
    3. Nombre: `OpenCode`, Alcances: `api`
    4. Copie el token (comienza con `glpat-`)
@@ -793,13 +868,12 @@ export GITLAB_TOKEN=glpat-...
 ```
 
 :::note
-Su administrador GitLab debe habilitar lo siguiente:
+Su administrador de GitLab debe habilitar:
 
-1. [Plataforma de agente Duo](https://docs.gitlab.com/user/duo_agent_platform/turn_on_off/) para el usuario, grupo o instancia
-2. Indicadores de funciones (a través de la consola Rails):
-   - `agent_platform_claude_code`
-   - `third_party_agents_enabled`
-     :::
+1. [Activar GitLab Duo](https://docs.gitlab.com/user/duo_agent_platform/turn_on_off/) para el usuario, grupo o instancia.
+2. [Activar la Plataforma de Agentes](https://docs.gitlab.com/user/duo_agent_platform/turn_on_off/) (GitLab 18.8+) o [habilitar funciones beta y experimentales](https://docs.gitlab.com/user/duo_agent_platform/turn_on_off/) (GitLab 18.7 y anteriores).
+3. Para Self-Managed, [configurar su instancia](https://docs.gitlab.com/administration/gitlab_duo/configure/gitlab_self_managed/).
+   :::
 
 ##### OAuth para instancias autohospedadas
 
@@ -835,6 +909,17 @@ Personalizar a través de `opencode.json`:
   }
 }
 ```
+
+##### Modelos de flujo de trabajo DAP (GitLab Duo Agent Platform)
+
+Los modelos de flujo de trabajo DAP proporcionan una ruta de ejecución alternativa que redirige las llamadas a herramientas a través del Servicio de Flujo de Trabajo Duo de GitLab (DWS), en lugar del chat basado en agentes estándar. Cuando se selecciona un modelo `duo-workflow-*`, OpenCode:
+
+1. Descubre los modelos disponibles en tu espacio de nombres de GitLab.
+2. Muestra un selector si hay varios modelos disponibles.
+3. Almacena en caché el modelo seleccionado para acelerar los inicios posteriores.
+4. Redirige las solicitudes de ejecución de herramientas a través del sistema de herramientas de OpenCode controlado por permisos.
+
+Los modelos disponibles siguen la convención de nombres `duo-workflow-*` y se descubren dinámicamente en tu instancia de GitLab.
 
 ##### Herramientas de API de GitLab (opcionales, pero muy recomendables)
 
@@ -1257,6 +1342,60 @@ Para usar Kimi K2 de Moonshot AI:
 
 ---
 
+### NVIDIA
+
+NVIDIA proporciona acceso a modelos Nemotron y muchos otros modelos abiertos a través de [build.nvidia.com](https://build.nvidia.com) de forma gratuita.
+
+1. Dirígete a [build.nvidia.com](https://build.nvidia.com), crea una cuenta y genera una clave API.
+
+2. Ejecute el comando `/connect` y busque **NVIDIA**.
+
+   ```txt
+   /connect
+   ```
+
+3. Ingrese su clave NVIDIA API.
+
+   ```txt
+   ┌ API key
+   │
+   │
+   └ enter
+   ```
+
+4. Ejecute el comando `/models` para seleccionar un modelo como nemotron-3-super-120b-a12b.
+
+   ```txt
+   /models
+   ```
+
+#### On-Prem / NIM
+
+También puede usar modelos NVIDIA localmente a través de [NVIDIA NIM](https://docs.nvidia.com/nim/) configurando una URL base personalizada.
+
+```json title="opencode.json" {6}
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "nvidia": {
+      "options": {
+        "baseURL": "http://localhost:8000/v1"
+      }
+    }
+  }
+}
+```
+
+#### Variable de entorno
+
+Como alternativa, configure su clave API como una variable de entorno.
+
+```bash frame="none"
+export NVIDIA_API_KEY=nvapi-your-key-here
+```
+
+---
+
 ### Nebius Token Factory
 
 1. Dirígete a la [consola de Nebius Token Factory](https://tokenfactory.nebius.com/), crea una cuenta y haz clic en **Agregar clave**.
@@ -1483,6 +1622,74 @@ OpenCode Zen es una lista de modelos probados y verificados proporcionada por el
                  "allow_fallbacks": false
                }
              }
+           }
+         }
+       }
+     }
+   }
+   ```
+
+---
+
+### LLM Gateway
+
+1. Dirígete al [panel de LLM Gateway](https://llmgateway.io/dashboard), haz clic en **Crear clave API** y copia la clave.
+
+2. Ejecute el comando `/connect` y busque LLM Gateway.
+
+   ```txt
+   /connect
+   ```
+
+3. Ingrese la clave API para el proveedor.
+
+   ```txt
+   ┌ API key
+   │
+   │
+   └ enter
+   ```
+
+4. Muchos modelos de LLM Gateway están precargados de forma predeterminada, ejecute el comando `/models` para seleccionar el que desee.
+
+   ```txt
+   /models
+   ```
+
+   También puede agregar modelos adicionales a través de su configuración opencode.
+
+   ```json title="opencode.json" {6}
+   {
+     "$schema": "https://opencode.ai/config.json",
+     "provider": {
+       "llmgateway": {
+         "models": {
+           "somecoolnewmodel": {}
+         }
+       }
+     }
+   }
+   ```
+
+5. También puedes personalizarlos a través de tu configuración opencode. A continuación se muestra un ejemplo de cómo especificar un proveedor.
+
+   ```json title="opencode.json"
+   {
+     "$schema": "https://opencode.ai/config.json",
+     "provider": {
+       "llmgateway": {
+         "models": {
+           "glm-4.7": {
+             "name": "GLM 4.7"
+           },
+           "gpt-5.2": {
+             "name": "GPT-5.2"
+           },
+           "gemini-2.5-pro": {
+             "name": "Gemini 2.5 Pro"
+           },
+           "claude-3-5-sonnet-20241022": {
+             "name": "Claude 3.5 Sonnet"
            }
          }
        }
@@ -1985,5 +2192,5 @@ Si tiene problemas para configurar un proveedor, verifique lo siguiente:
 
 2. Para proveedores personalizados, verifique la configuración opencode y:
    - Asegúrese de que el ID del proveedor utilizado en el comando `/connect` coincida con el ID en su configuración opencode.
-   - Se utiliza el paquete npm correcto para el proveedor. Por ejemplo, utilice `@ai-sdk/cerebras` para Cerebras. Y para todos los demás proveedores compatibles con OpenAI, utilice `@ai-sdk/openai-compatible`.
+   - Se utiliza el paquete npm correcto para el proveedor. Por ejemplo, utilice `@ai-sdk/cerebras` para Cerebras. Y para todos los demás proveedores compatibles con OpenAI, utilice `@ai-sdk/openai-compatible` (para `/v1/chat/completions`); si un modelo usa `/v1/responses`, utilice `@ai-sdk/openai`. Para configuraciones mixtas bajo un solo proveedor, puede sobrescribir esta opción por modelo a través de `provider.npm`.
    - Verifique que se utilice el punto final API correcto en el campo `options.baseURL`.
