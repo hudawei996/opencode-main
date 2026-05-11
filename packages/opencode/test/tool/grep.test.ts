@@ -1,6 +1,6 @@
 import { describe, expect } from "bun:test"
 import path from "path"
-import { Effect, Layer } from "effect"
+import { Effect, Exit, Layer } from "effect"
 import { GrepTool } from "../../src/tool/grep"
 import { provideInstance, TestInstance } from "../fixture/fixture"
 import { SessionID, MessageID } from "../../src/session/schema"
@@ -109,5 +109,24 @@ describe("tool.grep", () => {
       expect(result.output).toContain(file)
       expect(result.output).toContain("Line 2: line2")
     }),
+  )
+
+  it.live("terminates promptly when context abort signal fires", () =>
+    provideTmpdirInstance((dir) =>
+      Effect.gen(function* () {
+        yield* Effect.promise(() => Bun.write(path.join(dir, "test.txt"), "hello world"))
+        const controller = new AbortController()
+        // Abort immediately
+        controller.abort()
+        const abortCtx = { ...ctx, abort: controller.signal }
+        const info = yield* GrepTool
+        const grep = yield* info.init()
+        const exit = yield* grep
+          .execute({ pattern: "hello", path: dir }, abortCtx)
+          .pipe(Effect.exit)
+        // Should fail (defect from abort) rather than hang
+        expect(Exit.isFailure(exit)).toBe(true)
+      }),
+    ),
   )
 })
