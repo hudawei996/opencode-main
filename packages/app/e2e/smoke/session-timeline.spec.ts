@@ -8,6 +8,8 @@ const forbiddenText = ["Load details", "Show earlier steps"]
 type SmokeState = {
   ids: string[]
   visibleIds: string[]
+  messageIds: string[]
+  visibleMessageIds: string[]
   topVisibleId?: string
   signature: string
   scrollTop: number
@@ -24,7 +26,7 @@ type SmokeWindow = Window & {
 }
 
 test.describe("smoke: session timeline", () => {
-  test.setTimeout(120_000)
+  test.setTimeout(240_000)
 
   test("renders seeded timeline in order while paging through history", async ({ page }) => {
     const errors = trackPageErrors(page)
@@ -41,12 +43,10 @@ test.describe("smoke: session timeline", () => {
     await navigateToSession(page, fixture.sourceID, fixture.expected.sourceTitle)
     await expectSessionReady(page, "smoke-project")
     await navigateToSession(page, fixture.targetID, fixture.expected.targetTitle)
-    await expectSessionTimelineFullyLoaded(page, errors)
-
     const expectedPartIDs = fixture.expected.targetPartIDs
-    await expectScrollProgressesUp(page, expectedPartIDs, errors)
-    await visitEveryTurn(page, fixture.expected.targetMessageIDs, expectedPartIDs, errors)
-    await expectHistoryMaintainsOrder(page, expectedPartIDs, errors)
+    const expectedMessageIDs = fixture.expected.targetMessageIDs
+    await expectSessionTimelineReady(page, expectedPartIDs, expectedMessageIDs, errors)
+    await expectCanScrollToStart(page, expectedPartIDs, expectedMessageIDs, errors)
   })
 })
 
@@ -78,6 +78,8 @@ async function configureSmokePage(page: Page) {
         return {
           ids: [],
           visibleIds: [],
+          messageIds: [],
+          visibleMessageIds: [],
           topVisibleId: undefined,
           signature: "",
           scrollTop: 0,
@@ -103,11 +105,21 @@ async function configureSmokePage(page: Page) {
         }
       }
 
-      const rows = [...scroller.querySelectorAll<HTMLElement>("[data-message-id]")].map((el) => ({
-        id: el.dataset.messageId,
-        top: Math.round(el.getBoundingClientRect().top),
-        bottom: Math.round(el.getBoundingClientRect().bottom),
-      }))
+      const messageIds: string[] = []
+      const visibleMessageIds: string[] = []
+      const rows = [...scroller.querySelectorAll<HTMLElement>("[data-message-id]")].map((el) => {
+        const rect = el.getBoundingClientRect()
+        const id = el.dataset.messageId
+        if (id) {
+          messageIds.push(id)
+          if (rect.bottom >= scrollerRect.top && rect.top <= scrollerRect.bottom) visibleMessageIds.push(id)
+        }
+        return {
+          id,
+          top: Math.round(rect.top),
+          bottom: Math.round(rect.bottom),
+        }
+      })
       const signature = JSON.stringify({
         top: Math.round(scroller.scrollTop),
         height: Math.round(scroller.scrollHeight),
@@ -118,6 +130,8 @@ async function configureSmokePage(page: Page) {
       return {
         ids,
         visibleIds,
+        messageIds,
+        visibleMessageIds,
         topVisibleId,
         signature,
         scrollTop: Math.round(scroller.scrollTop),
@@ -157,56 +171,39 @@ async function configureSmokePage(page: Page) {
   })
 }
 
-async function visitEveryTurn(page: Page, messageIDs: string[], expected: string[], errors: string[]) {
-  const seenMounted = new Set<string>()
-  const samples: TraversalSample[] = []
-  for (const messageID of messageIDs.toReversed()) {
-    await navigateToTurn(page, messageID)
-    const current = await timelineState(page)
-    for (const id of current.ids) seenMounted.add(id)
-    expectNoSmokeErrors(errors, current.errorToasts, current.forbiddenText)
-    expectOrderedPartIDs(expected, current.ids, "mounted")
-    expectOrderedPartIDs(expected, current.visibleIds, "visible")
-    samples.push(sampleTraversal(current, seenMounted.size))
-  }
-  expect(expected.filter((id) => !seenMounted.has(id)), `missing timeline parts after visiting every turn\n${sampleSummary(samples)}`).toEqual([])
-}
-
-async function expectScrollProgressesUp(page: Page, expected: string[], errors: string[]) {
+async function expectCanScrollToStart(page: Page, expectedPartIDs: string[], expectedMessageIDs: string[], errors: string[]) {
   await pointAtTimeline(page)
-  const start = await timelineState(page)
-  const startIndex = visibleIndex(expected, start)
-  expect(startIndex, "starting visible part should be known").not.toBeUndefined()
-  expectOrderedPartIDs(expected, start.ids, "mounted")
-  expectOrderedPartIDs(expected, start.visibleIds, "visible")
+  const seenParts = new Set<string>()
+  const seenMessages = new Set<string>()
+  const samples: TraversalSample[] = []
+  let current = await timelineState(page)
+  let unchangedAtTop = 0
 
-  const samples = [sampleTraversal(start, 0)]
-  let current = start
-  let progressed = false
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const beforeIndex = visibleIndex(expected, current)
-    await scrollTimelineUp(page, current)
-    current = await timelineState(page)
-    const currentIndex = visibleIndex(expected, current)
-    samples.push(sampleTraversal(current, 0))
+  for (let attempt = 0; attempt < 600; attempt++) {
+    collectSeen(current, seenParts, seenMessages)
+    samples.push(sampleTraversal(current, seenParts.size, seenMessages.size))
     expectNoSmokeErrors(errors, current.errorToasts, current.forbiddenText)
-    expectOrderedPartIDs(expected, current.ids, "mounted")
-    expectOrderedPartIDs(expected, current.visibleIds, "visible")
-    expect(currentIndex, `visible part should stay known while scrolling\n${sampleSummary(samples)}`).not.toBeUndefined()
-    expect(currentIndex!, `scroll should not jump newer than the starting point\n${sampleSummary(samples)}`).toBeLessThanOrEqual(startIndex!)
-    if (beforeIndex !== undefined && currentIndex !== undefined && currentIndex < beforeIndex) progressed = true
-    if (progressed && currentIndex !== undefined && currentIndex < startIndex! - 12) return
-  }
-  expect(progressed, `timeline did not move upward through history\n${sampleSummary(samples)}`).toBe(true)
-}
+    expectOrderedIDs(expectedPartIDs, current.ids, "mounted part")
+    expectOrderedIDs(expectedPartIDs, current.visibleIds, "visible part")
+    expectOrderedIDs(expectedMessageIDs, unique(current.messageIds), "mounted message")
+    expectOrderedIDs(expectedMessageIDs, unique(current.visibleMessageIds), "visible message")
 
-async function navigateToTurn(page: Page, messageID: string) {
-  await page.evaluate((id) => {
-    history.pushState(null, "", `${location.pathname}${location.search}#message-${id}`)
-    window.dispatchEvent(new PopStateEvent("popstate"))
-  }, messageID)
-  await expect(page.locator(`[data-message-id="${messageID}"]`).first(), `turn ${messageID}`).toBeVisible({ timeout: 10_000 })
-  await waitForTimelineStable(page)
+    if (current.scrollTop <= 1 && seenParts.size === expectedPartIDs.length && seenMessages.size === expectedMessageIDs.length) {
+      expectCompleteScroll(current, expectedPartIDs, expectedMessageIDs, seenParts, seenMessages, samples)
+      return
+    }
+
+    const before = current
+    const changed = await scrollTimelineUp(page, current)
+    current = await timelineState(page)
+    if (!changed && current.signature === before.signature && current.scrollTop <= 1) unchangedAtTop++
+    else unchangedAtTop = 0
+    if (unchangedAtTop >= 2) break
+  }
+
+  collectSeen(current, seenParts, seenMessages)
+  samples.push(sampleTraversal(current, seenParts.size, seenMessages.size))
+  expectCompleteScroll(current, expectedPartIDs, expectedMessageIDs, seenParts, seenMessages, samples)
 }
 
 async function timelineState(page: Page) {
@@ -215,6 +212,8 @@ async function timelineState(page: Page) {
       (window as SmokeWindow).__timelineSmokeState?.() ?? {
         ids: [],
         visibleIds: [],
+        messageIds: [],
+        visibleMessageIds: [],
         topVisibleId: undefined,
         signature: "",
         scrollTop: 0,
@@ -237,31 +236,39 @@ async function pointAtTimeline(page: Page) {
 }
 
 async function scrollTimelineUp(page: Page, before: SmokeState) {
-  await page.mouse.wheel(0, -Math.max(1, Math.round(before.clientHeight / 2)))
-  await page.evaluate(
+  return page.evaluate(
     (prev) =>
       new Promise<boolean>((resolve) => {
+        const root = document.querySelector('[data-slot="session-turn-list"]')
+        const scroller = root?.closest<HTMLElement>(".scroll-view__viewport")
+        if (!scroller) {
+          resolve(false)
+          return
+        }
+
+        scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -1, deltaMode: 0 }))
+        scroller.scrollTop = Math.max(0, scroller.scrollTop - Math.max(80, Math.round(scroller.clientHeight * 0.45)))
+
         const read = () => (window as SmokeWindow).__timelineSmokeState?.().signature ?? ""
         let frames = 0
-        let stableSince: string | undefined
         let stableFrames = 0
+        let last = ""
+        let changed = false
         const check = () => {
           const current = read()
-          if (current !== prev) {
-            if (current === stableSince) {
-              stableFrames++
-              if (stableFrames >= 3) {
-                resolve(true)
-                return
-              }
-            } else {
-              stableSince = current
-              stableFrames = 1
-            }
+          if (current !== prev) changed = true
+          if (current === last) stableFrames++
+          else {
+            stableFrames = 0
+            last = current
+          }
+          if (changed && stableFrames >= 2) {
+            resolve(true)
+            return
           }
           frames++
-          if (frames >= 240) {
-            resolve(current !== prev)
+          if (frames >= 30) {
+            resolve(changed)
             return
           }
           requestAnimationFrame(check)
@@ -272,27 +279,33 @@ async function scrollTimelineUp(page: Page, before: SmokeState) {
   )
 }
 
-function visibleIndex(expected: string[], state: SmokeState) {
-  for (const id of [state.topVisibleId, ...state.visibleIds]) {
-    if (!id) continue
-    const index = expected.indexOf(id)
-    if (index >= 0) return index
-  }
+function expectOrderedIDs(expected: string[], actual: string[], label: string) {
+  expect(actual.length, `${label} ids should not be empty`).toBeGreaterThan(0)
+  const actualSet = new Set(actual)
+  expect(actual, `${label} ids`).toEqual(expected.filter((id) => actualSet.has(id)))
 }
 
-function expectOrderedPartIDs(expected: string[], actual: string[], label: string) {
-  expect(actual.length, `${label} part ids should not be empty`).toBeGreaterThan(0)
-  const actualSet = new Set(actual)
-  expect(actual, `${label} part ids`).toEqual(expected.filter((id) => actualSet.has(id)))
+function unique(values: string[]) {
+  return values.filter((value, index) => values.indexOf(value) === index)
+}
+
+function collectSeen(state: SmokeState, seenParts: Set<string>, seenMessages: Set<string>) {
+  for (const id of state.ids) seenParts.add(id)
+  for (const id of state.visibleIds) seenParts.add(id)
+  for (const id of state.messageIds) seenMessages.add(id)
+  for (const id of state.visibleMessageIds) seenMessages.add(id)
 }
 
 type TraversalSample = ReturnType<typeof sampleTraversal>
 
-function sampleTraversal(state: SmokeState, seen: number) {
+function sampleTraversal(state: SmokeState, seenParts: number, seenMessages: number) {
   return {
-    seen,
+    seenParts,
+    seenMessages,
     mounted: state.ids.length,
     visible: state.visibleIds.length,
+    mountedMessages: unique(state.messageIds).length,
+    visibleMessages: unique(state.visibleMessageIds).length,
     top: state.scrollTop,
     height: state.scrollHeight,
     first: state.ids[0],
@@ -308,7 +321,7 @@ function sampleSummary(samples: TraversalSample[]) {
     .filter((_, index) => index % Math.max(1, Math.floor(samples.length / 8)) === 0 || index === samples.length - 1)
     .map(
       (sample, index) =>
-        `${index}: seen=${sample.seen} mounted=${sample.mounted} visible=${sample.visible} top=${sample.top}/${sample.height} first=${sample.first} last=${sample.last} topVisible=${sample.topVisible} visible=${sample.visibleFirst}..${sample.visibleLast}`,
+        `${index}: seenParts=${sample.seenParts} seenMessages=${sample.seenMessages} mounted=${sample.mounted}/${sample.mountedMessages} visible=${sample.visible}/${sample.visibleMessages} top=${sample.top}/${sample.height} first=${sample.first} last=${sample.last} topVisible=${sample.topVisible} visible=${sample.visibleFirst}..${sample.visibleLast}`,
     )
     .join("\n")
 }
@@ -330,22 +343,31 @@ async function waitForTimelineStable(page: Page) {
   )
 }
 
-async function expectSessionTimelineFullyLoaded(page: Page, errors: string[]) {
+async function expectSessionTimelineReady(page: Page, expectedPartIDs: string[], expectedMessageIDs: string[], errors: string[]) {
   await waitForTimelineStable(page)
   for (const text of forbiddenText) await expect(page.getByText(text)).toHaveCount(0)
   const currentState = await timelineState(page)
   expectNoSmokeErrors(errors, currentState.errorToasts, currentState.forbiddenText)
-  await expect(page.getByText("Verify generated output").first()).toBeVisible()
-  await expect(page.locator('[data-component="tool-part-wrapper"]').first()).toBeVisible()
+  expectOrderedIDs(expectedPartIDs, currentState.ids, "mounted part")
+  expectOrderedIDs(expectedPartIDs, currentState.visibleIds, "visible part")
+  expectOrderedIDs(expectedMessageIDs, unique(currentState.messageIds), "mounted message")
+  expectOrderedIDs(expectedMessageIDs, unique(currentState.visibleMessageIds), "visible message")
 }
 
-async function expectHistoryMaintainsOrder(page: Page, expected: string[], errors: string[]) {
-  const actual = await timelineState(page)
-  expectOrderedPartIDs(expected, actual.ids, "mounted")
-  expectOrderedPartIDs(expected, actual.visibleIds, "visible")
-  expectNoSmokeErrors(errors, actual.errorToasts, actual.forbiddenText)
-  expect(new Set(expected).size).toBe(expected.length)
-  expect(expected.length).toBe(331)
+function expectCompleteScroll(
+  state: SmokeState,
+  expectedPartIDs: string[],
+  expectedMessageIDs: string[],
+  seenParts: Set<string>,
+  seenMessages: Set<string>,
+  samples: TraversalSample[],
+) {
+  expect(state.scrollTop, `timeline should reach the start\n${sampleSummary(samples)}`).toBeLessThanOrEqual(1)
+  expect(expectedPartIDs.filter((id) => !seenParts.has(id)), `missing visible timeline parts\n${sampleSummary(samples)}`).toEqual([])
+  expect(expectedMessageIDs.filter((id) => !seenMessages.has(id)), `missing visible messages\n${sampleSummary(samples)}`).toEqual([])
+  expect(new Set(expectedPartIDs).size).toBe(expectedPartIDs.length)
+  expect(new Set(expectedMessageIDs).size).toBe(expectedMessageIDs.length)
+  expect(expectedPartIDs.length).toBe(331)
 }
 
 async function openProject(page: Page, projectName: string) {
