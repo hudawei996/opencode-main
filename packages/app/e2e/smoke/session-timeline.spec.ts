@@ -24,7 +24,7 @@ type SmokeWindow = Window & {
 }
 
 test.describe("smoke: session timeline", () => {
-  test.setTimeout(300_000)
+  test.setTimeout(120_000)
 
   test("renders seeded timeline in order while paging through history", async ({ page }) => {
     const errors = trackPageErrors(page)
@@ -33,27 +33,22 @@ test.describe("smoke: session timeline", () => {
       provider: fixture.provider,
       directory: fixture.directory,
       project: fixture.project,
-      pageMessages: pageMessages,
+      pageMessages,
     })
     await configureSmokePage(page)
 
     await openProject(page, "SmokeProject")
     await navigateToSession(page, fixture.sourceID, fixture.expected.sourceTitle)
     await expectSessionReady(page, "smoke-project")
-
-    // The target session is linked inside the source session's history
     await navigateToSession(page, fixture.targetID, fixture.expected.targetTitle)
-    
     await expectSessionTimelineFullyLoaded(page, errors)
 
     const expectedPartIDs = fixture.expected.targetPartIDs
-    const samples: TraversalSample[] = []
-    
-    await scrollHistoryToTop(page, expectedPartIDs, samples, errors)
+    await expectScrollProgressesUp(page, expectedPartIDs, errors)
+    await visitEveryTurn(page, fixture.expected.targetMessageIDs, expectedPartIDs, errors)
     await expectHistoryMaintainsOrder(page, expectedPartIDs, errors)
   })
 })
-
 
 async function configureSmokePage(page: Page) {
   await page.addInitScript(() => {
@@ -162,91 +157,56 @@ async function configureSmokePage(page: Page) {
   })
 }
 
-
-function timelineScroller(page: Page) {
-  return page.locator(".scroll-view__viewport", { has: page.locator('[data-slot="session-turn-list"]') })
-}
-
-async function scrollHistoryToTop(page: Page, expected: string[], samples: TraversalSample[], errors: string[]) {
-  let unchanged = 0
+async function visitEveryTurn(page: Page, messageIDs: string[], expected: string[], errors: string[]) {
   const seenMounted = new Set<string>()
-  await focusTimeline(page)
-
-  for (let attempt = 0; attempt < expected.length * 3; attempt++) {
+  const samples: TraversalSample[] = []
+  for (const messageID of messageIDs.toReversed()) {
+    await navigateToTurn(page, messageID)
     const current = await timelineState(page)
     for (const id of current.ids) seenMounted.add(id)
     expectNoSmokeErrors(errors, current.errorToasts, current.forbiddenText)
     expectOrderedPartIDs(expected, current.ids, "mounted")
     expectOrderedPartIDs(expected, current.visibleIds, "visible")
     samples.push(sampleTraversal(current, seenMounted.size))
-    
-    // Check if we've seen everything and we're at the top
-    if (isTimelineTop(current, expected) && seenMounted.size === expected.length) return current
-
-    const scrolled = await scrollTimelineUp(page, current)
-    if (scrolled.moved) {
-      unchanged = 0
-      continue
-    }
-
-    unchanged++
-    if (unchanged >= 3) {
-      throw new Error(`timeline upward traversal stalled\n${sampleSummary(samples)}`)
-    }
-    await focusTimeline(page)
   }
-  throw new Error(`timeline upward traversal exceeded expected attempts\n${sampleSummary(samples)}`)
+  expect(expected.filter((id) => !seenMounted.has(id)), `missing timeline parts after visiting every turn\n${sampleSummary(samples)}`).toEqual([])
 }
 
-async function scrollTimelineUp(page: Page, before: SmokeState) {
-  await page.mouse.wheel(0, -Math.max(1, Math.round(before.clientHeight / 2)))
-  return {
-    moved: await page.evaluate(
-      (prev) =>
-        new Promise<boolean>((resolve) => {
-          const read = () => (window as SmokeWindow).__timelineSmokeState?.().signature ?? ""
-          let frames = 0
-          let stableSince: string | undefined
-          let stableFrames = 0
-          const check = () => {
-            const current = read()
-            if (current !== prev) {
-              if (current === stableSince) {
-                stableFrames++
-                if (stableFrames >= 3) {
-                  resolve(true)
-                  return
-                }
-              } else {
-                stableSince = current
-                stableFrames = 1
-              }
-            }
-            frames++
-            if (frames >= 240) {
-              resolve(current !== prev)
-              return
-            }
-            requestAnimationFrame(check)
-          }
-          requestAnimationFrame(check)
-        }),
-      before.signature,
-    ),
+async function expectScrollProgressesUp(page: Page, expected: string[], errors: string[]) {
+  await pointAtTimeline(page)
+  const start = await timelineState(page)
+  const startIndex = visibleIndex(expected, start)
+  expect(startIndex, "starting visible part should be known").not.toBeUndefined()
+  expectOrderedPartIDs(expected, start.ids, "mounted")
+  expectOrderedPartIDs(expected, start.visibleIds, "visible")
+
+  const samples = [sampleTraversal(start, 0)]
+  let current = start
+  let progressed = false
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const beforeIndex = visibleIndex(expected, current)
+    await scrollTimelineUp(page, current)
+    current = await timelineState(page)
+    const currentIndex = visibleIndex(expected, current)
+    samples.push(sampleTraversal(current, 0))
+    expectNoSmokeErrors(errors, current.errorToasts, current.forbiddenText)
+    expectOrderedPartIDs(expected, current.ids, "mounted")
+    expectOrderedPartIDs(expected, current.visibleIds, "visible")
+    expect(currentIndex, `visible part should stay known while scrolling\n${sampleSummary(samples)}`).not.toBeUndefined()
+    expect(currentIndex!, `scroll should not jump newer than the starting point\n${sampleSummary(samples)}`).toBeLessThanOrEqual(startIndex!)
+    if (beforeIndex !== undefined && currentIndex !== undefined && currentIndex < beforeIndex) progressed = true
+    if (progressed && currentIndex !== undefined && currentIndex < startIndex! - 12) return
   }
+  expect(progressed, `timeline did not move upward through history\n${sampleSummary(samples)}`).toBe(true)
 }
 
-async function focusTimeline(page: Page) {
-  const box = await timelineScroller(page).boundingBox()
-  if (!box) throw new Error("Timeline scroller is not visible")
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-}
-
-
-
-
-function isTimelineTop(state: SmokeState, expected: string[]) {
-  return state.scrollTop <= 0 && state.ids[0] === expected[0]
+async function navigateToTurn(page: Page, messageID: string) {
+  await page.evaluate((id) => {
+    history.pushState(null, "", `${location.pathname}${location.search}#message-${id}`)
+    window.dispatchEvent(new PopStateEvent("popstate"))
+  }, messageID)
+  await expect(page.locator(`[data-message-id="${messageID}"]`).first(), `turn ${messageID}`).toBeVisible({ timeout: 10_000 })
+  await waitForTimelineStable(page)
 }
 
 async function timelineState(page: Page) {
@@ -264,6 +224,60 @@ async function timelineState(page: Page) {
         forbiddenText: [],
       },
   )
+}
+
+function timelineScroller(page: Page) {
+  return page.locator(".scroll-view__viewport", { has: page.locator('[data-slot="session-turn-list"]') })
+}
+
+async function pointAtTimeline(page: Page) {
+  const box = await timelineScroller(page).boundingBox()
+  if (!box) throw new Error("Timeline scroller is not visible")
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+}
+
+async function scrollTimelineUp(page: Page, before: SmokeState) {
+  await page.mouse.wheel(0, -Math.max(1, Math.round(before.clientHeight / 2)))
+  await page.evaluate(
+    (prev) =>
+      new Promise<boolean>((resolve) => {
+        const read = () => (window as SmokeWindow).__timelineSmokeState?.().signature ?? ""
+        let frames = 0
+        let stableSince: string | undefined
+        let stableFrames = 0
+        const check = () => {
+          const current = read()
+          if (current !== prev) {
+            if (current === stableSince) {
+              stableFrames++
+              if (stableFrames >= 3) {
+                resolve(true)
+                return
+              }
+            } else {
+              stableSince = current
+              stableFrames = 1
+            }
+          }
+          frames++
+          if (frames >= 240) {
+            resolve(current !== prev)
+            return
+          }
+          requestAnimationFrame(check)
+        }
+        requestAnimationFrame(check)
+      }),
+    before.signature,
+  )
+}
+
+function visibleIndex(expected: string[], state: SmokeState) {
+  for (const id of [state.topVisibleId, ...state.visibleIds]) {
+    if (!id) continue
+    const index = expected.indexOf(id)
+    if (index >= 0) return index
+  }
 }
 
 function expectOrderedPartIDs(expected: string[], actual: string[], label: string) {

@@ -30,7 +30,8 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
 
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url())
-    if (url.port !== "4096") return route.fallback()
+    const targetPort = process.env.PLAYWRIGHT_SERVER_PORT ?? "4096"
+    if (url.port !== targetPort) return route.fallback()
     
     const path = url.pathname
     if (path === "/global/event" || path === "/event") return sse(route)
@@ -59,7 +60,16 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
 }
 
 function json(route: Route, body: unknown, headers?: Record<string, string>) {
-  return route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify(body ?? null) })
+  return route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-expose-headers": "x-next-cursor",
+      ...headers,
+    },
+    body: JSON.stringify(body ?? null),
+  })
 }
 
 function sse(route: Route) {
