@@ -32,6 +32,7 @@ export type Event =
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
   | EventProjectUpdated
+  | EventProviderUpdated
   | EventVcsBranchUpdated
   | EventWorkspaceReady
   | EventWorkspaceFailed
@@ -784,6 +785,7 @@ export type GlobalEvent = {
     | EventFileWatcherUpdated
     | EventLspClientDiagnostics
     | EventLspUpdated
+    | EventProviderUpdated
     | EventMessagePartDelta
     | EventPermissionAsked
     | EventPermissionReplied
@@ -1510,6 +1512,7 @@ export type File = {
   removed: number
   status: "added" | "deleted" | "modified"
 }
+
 
 export type Path = {
   home: string
@@ -2526,6 +2529,14 @@ export type EventProjectUpdated = {
   id: string
   type: "project.updated"
   properties: Project
+}
+
+export type EventProviderUpdated = {
+  id: string
+  type: "provider.updated"
+  properties: {
+    providerIDs: Array<string>
+  }
 }
 
 export type EventVcsBranchUpdated = {

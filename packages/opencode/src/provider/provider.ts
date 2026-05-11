@@ -22,6 +22,8 @@ import { pathToFileURL } from "url"
 import { Effect, Layer, Context, Schema, Types } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { InstanceState } from "@/effect/instance-state"
+import { BusEvent } from "@/bus/bus-event"
+import { GlobalBus } from "@/bus/global"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { isRecord } from "@/util/record"
 import { optionalOmitUndefined, withStatics } from "@opencode-ai/core/schema"
@@ -31,6 +33,15 @@ import { ModelID, ProviderID } from "./schema"
 import { ModelStatus } from "./model-status"
 
 const log = Log.create({ service: "provider" })
+
+export const Event = {
+  Updated: BusEvent.define(
+    "provider.updated",
+    Schema.Struct({
+      providerIDs: Schema.Array(Schema.String),
+    }),
+  ),
+}
 
 function shouldUseCopilotResponsesApi(modelID: string): boolean {
   const match = /^gpt-(\d+)/.exec(modelID)
@@ -89,6 +100,15 @@ function wrapSSE(res: Response, ms: number, ctl: AbortController) {
 type BundledSDK = {
   languageModel(modelId: string): LanguageModelV3
 }
+
+type ScannedModel = Omit<Model, "id" | "providerID">
+type OpenAICompatibleModelsResult = {
+  data?: Array<{
+    id?: string
+  }>
+}
+
+const OPENAI_COMPATIBLE_NPM = "@ai-sdk/openai-compatible"
 
 const BUNDLED_PROVIDERS: Record<string, () => Promise<(opts: any) => BundledSDK>> = {
   "@ai-sdk/amazon-bedrock": () => import("@ai-sdk/amazon-bedrock").then((m) => m.createAmazonBedrock),
@@ -952,6 +972,7 @@ export function defaultModelIDs<T extends { models: Record<string, { id: string 
 
 export interface Interface {
   readonly list: () => Effect.Effect<Record<ProviderID, Info>>
+  readonly refresh: () => Effect.Effect<void>
   readonly getProvider: (providerID: ProviderID) => Effect.Effect<Info>
   readonly getModel: (providerID: ProviderID, modelID: ModelID) => Effect.Effect<Model>
   readonly getLanguage: (model: Model) => Effect.Effect<LanguageModelV3>
@@ -963,12 +984,19 @@ export interface Interface {
   readonly defaultModel: () => Effect.Effect<{ providerID: ProviderID; modelID: ModelID }>
 }
 
+type ProviderScan = {
+  mode: "augment" | "replace"
+  run: () => Promise<Record<string, ScannedModel>>
+}
+
 interface State {
   models: Map<string, LanguageModelV3>
   providers: Record<ProviderID, Info>
   sdk: Map<string, BundledSDK>
   modelLoaders: Record<string, CustomModelLoader>
   varsLoaders: Record<string, CustomVarsLoader>
+  scans: Record<string, ProviderScan>
+  refreshing?: Promise<void>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Provider") {}
@@ -1080,6 +1108,96 @@ export function fromModelsDevProvider(provider: ModelsDev.Provider): Info {
   }
 }
 
+function normalizeScannedModels(providerID: ProviderID, next: Record<string, ScannedModel>) {
+  return Object.fromEntries(
+    Object.entries(next).map(([id, model]) => [
+      id,
+      {
+        ...model,
+        id: ModelID.make(id),
+        providerID,
+      },
+    ]),
+  ) as Record<string, Model>
+}
+
+function toScannedModel(model: Model, modelID: string): ScannedModel {
+  return {
+    api: {
+      ...model.api,
+      id: modelID,
+    },
+    name: model.name,
+    family: model.family,
+    capabilities: {
+      ...model.capabilities,
+      input: { ...model.capabilities.input },
+      output: { ...model.capabilities.output },
+    },
+    cost: {
+      ...model.cost,
+      cache: { ...model.cost.cache },
+      ...(model.cost.experimentalOver200K && {
+        experimentalOver200K: {
+          ...model.cost.experimentalOver200K,
+          cache: { ...model.cost.experimentalOver200K.cache },
+        },
+      }),
+    },
+    limit: { ...model.limit },
+    status: model.status,
+    options: { ...model.options },
+    headers: { ...model.headers },
+    release_date: model.release_date,
+    ...(model.variants && {
+      variants: mapValues(model.variants, (variant) => ({ ...variant })),
+    }),
+  }
+}
+
+function canDiscoverOpenAICompatibleModels(provider: Info) {
+  if (typeof provider.options.baseURL !== "string" || provider.options.baseURL.trim() === "") return false
+  const models = Object.values(provider.models)
+  if (models.length === 0) return false
+  return models.every((model) => model.api.npm === OPENAI_COMPATIBLE_NPM)
+}
+
+async function discoverOpenAICompatibleModels(provider: Info): Promise<Record<string, ScannedModel>> {
+  if (!canDiscoverOpenAICompatibleModels(provider)) return {}
+
+  const baseURL = provider.options.baseURL.trim()
+  const headers = new Headers({
+    Accept: "application/json",
+  })
+  const apiKey =
+    typeof provider.options.apiKey === "string" && provider.options.apiKey !== "" ? provider.options.apiKey : provider.key
+  if (apiKey) headers.set("Authorization", `Bearer ${apiKey}`)
+
+  const url = new URL("models", baseURL.endsWith("/") ? baseURL : `${baseURL}/`)
+  const response = await fetch(url, {
+    headers,
+    signal: AbortSignal.timeout(5000),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to discover models for ${provider.id}: ${response.status}`)
+  }
+
+  const body = (await response.json()) as OpenAICompatibleModelsResult
+  if (!Array.isArray(body.data)) return {}
+
+  const fallback = Object.values(provider.models)[0]
+  if (!fallback) return {}
+
+  return Object.fromEntries(
+    body.data.flatMap((item) => {
+      if (typeof item?.id !== "string" || item.id.trim() === "") return []
+      const modelID = item.id.trim()
+      const base = provider.models[modelID] ?? fallback
+      return [[modelID, { ...toScannedModel(base, modelID), name: provider.models[modelID]?.name ?? modelID }]]
+    }),
+  )
+}
+
 const layer: Layer.Layer<
   Service,
   never,
@@ -1111,9 +1229,7 @@ const layer: Layer.Layer<
           [providerID: string]: CustomVarsLoader
         } = {}
         const sdk = new Map<string, BundledSDK>()
-        const discoveryLoaders: {
-          [providerID: string]: CustomDiscoverModels
-        } = {}
+        const scans: Record<string, ProviderScan> = {}
         const dep = {
           auth: (id: string) => auth.get(id).pipe(Effect.orDie),
           config: () => config.get(),
@@ -1327,14 +1443,18 @@ const layer: Layer.Layer<
             continue
           }
           const result = yield* fn(data)
-          if (result && (result.autoload || providers[providerID])) {
-            if (result.getModel) modelLoaders[providerID] = result.getModel
-            if (result.vars) varsLoaders[providerID] = result.vars
-            if (result.discoverModels) discoveryLoaders[providerID] = result.discoverModels
-            const opts = result.options ?? {}
-            const patch: Partial<Info> = providers[providerID] ? { options: opts } : { source: "custom", options: opts }
-            mergeProvider(providerID, patch)
+          if (!result || (!result.autoload && !providers[providerID])) continue
+          if (result.getModel) modelLoaders[providerID] = result.getModel
+          if (result.vars) varsLoaders[providerID] = result.vars
+          if (result.discoverModels) {
+            scans[providerID] = {
+              mode: "augment",
+              run: result.discoverModels,
+            }
           }
+          const opts = result.options ?? {}
+          const patch: Partial<Info> = providers[providerID] ? { options: opts } : { source: "custom", options: opts }
+          mergeProvider(providerID, patch)
         }
 
         // load config - re-apply with updated data
@@ -1347,67 +1467,39 @@ const layer: Layer.Layer<
           mergeProvider(providerID, partial)
         }
 
-        const gitlab = ProviderID.make("gitlab")
-        if (discoveryLoaders[gitlab] && providers[gitlab] && isProviderAllowed(gitlab)) {
-          yield* Effect.promise(async () => {
-            try {
-              const discovered = await discoveryLoaders[gitlab]()
-              for (const [modelID, model] of Object.entries(discovered)) {
-                if (!providers[gitlab].models[modelID]) {
-                  providers[gitlab].models[modelID] = model
-                }
-              }
-            } catch (e) {
-              log.warn("state discovery error", { id: "gitlab", error: e })
-            }
-          })
+        for (const hook of plugins) {
+          const p = hook.provider
+          const models = p?.models
+          if (!p || !models) continue
+
+          const providerID = ProviderID.make(p.id)
+          if (disabled.has(providerID)) continue
+
+          if (!providers[providerID]) continue
+          scans[providerID] = {
+            mode: "replace",
+            run: async () =>
+              normalizeScannedModels(
+                providerID,
+                await models(providers[providerID], {
+                  auth: await bridge.promise(auth.get(providerID).pipe(Effect.orDie)),
+                }),
+              ),
+          }
         }
 
         for (const [id, provider] of Object.entries(providers)) {
           const providerID = ProviderID.make(id)
-          if (!isProviderAllowed(providerID)) {
-            delete providers[providerID]
-            continue
+          const provider = providers[providerID]
+          if (!provider || scans[providerID]) continue
+          if (!canDiscoverOpenAICompatibleModels(provider)) continue
+          scans[providerID] = {
+            mode: "replace",
+            run: () => discoverOpenAICompatibleModels(providers[providerID]),
           }
-
-          const configProvider = cfg.provider?.[providerID]
-
-          for (const [modelID, model] of Object.entries(provider.models)) {
-            model.api.id = model.api.id ?? model.id ?? modelID
-            if (
-              modelID === "gpt-5-chat-latest" ||
-              (providerID === ProviderID.openrouter && modelID === "openai/gpt-5-chat")
-            )
-              delete provider.models[modelID]
-            if (model.status === "alpha" && !Flag.OPENCODE_ENABLE_EXPERIMENTAL_MODELS) delete provider.models[modelID]
-            if (model.status === "deprecated") delete provider.models[modelID]
-            if (
-              (configProvider?.blacklist && configProvider.blacklist.includes(modelID)) ||
-              (configProvider?.whitelist && !configProvider.whitelist.includes(modelID))
-            )
-              delete provider.models[modelID]
-
-            if (!model.variants || Object.keys(model.variants).length === 0) {
-              model.variants = mapValues(ProviderTransform.variants(model), (v) => v)
-            }
-
-            const configVariants = configProvider?.models?.[modelID]?.variants
-            if (configVariants && model.variants) {
-              const merged = mergeDeep(model.variants, configVariants)
-              model.variants = mapValues(
-                pickBy(merged, (v) => !v.disabled),
-                (v) => omit(v, ["disabled"]),
-              )
-            }
-          }
-
-          if (Object.keys(provider.models).length === 0) {
-            delete providers[providerID]
-            continue
-          }
-
-          log.info("found", { providerID })
         }
+
+        finalizeProviders(providers, cfg, isProviderAllowed)
 
         return {
           models: languages,
@@ -1415,11 +1507,89 @@ const layer: Layer.Layer<
           sdk,
           modelLoaders,
           varsLoaders,
+          scans,
         }
       }),
     )
 
     const list = Effect.fn("Provider.list")(() => InstanceState.use(state, (s) => s.providers))
+
+    const refresh = Effect.fn("Provider.refresh")(function* () {
+      const s = yield* InstanceState.get(state)
+      if (s.refreshing) {
+        yield* Effect.promise(() => s.refreshing!)
+        return
+      }
+
+      const cfg = yield* config.get()
+      const ctx = yield* InstanceState.context
+      const workspace = yield* InstanceState.workspaceID
+      const disabled = new Set(cfg.disabled_providers ?? [])
+      const enabled = cfg.enabled_providers ? new Set(cfg.enabled_providers) : null
+
+      function isProviderAllowed(providerID: ProviderID): boolean {
+        if (enabled && !enabled.has(providerID)) return false
+        if (disabled.has(providerID)) return false
+        return true
+      }
+
+      s.refreshing = (async () => {
+        const changed = new Set<ProviderID>()
+
+        await Promise.allSettled(
+          Object.entries(s.scans).map(async ([id, scan]) => {
+            const providerID = ProviderID.make(id)
+            const provider = s.providers[providerID]
+            if (!provider || !isProviderAllowed(providerID)) return
+
+            const before = JSON.stringify(provider.models)
+
+            try {
+              const next = normalizeScannedModels(providerID, await scan.run())
+              if (scan.mode === "augment") {
+                for (const [modelID, model] of Object.entries(next)) {
+                  if (!provider.models[modelID]) provider.models[modelID] = model
+                }
+              } else {
+                provider.models = next
+              }
+
+              if (!finalizeProvider(providerID, provider, cfg.provider?.[providerID])) {
+                delete s.providers[providerID]
+              }
+
+              const after = s.providers[providerID] ? JSON.stringify(s.providers[providerID].models) : ""
+              if (before === after) return
+
+              changed.add(providerID)
+              for (const key of [...s.models.keys()]) {
+                if (key.startsWith(`${providerID}/`)) s.models.delete(key)
+              }
+            } catch (error) {
+              log.warn("provider refresh failed", { providerID, error })
+            }
+          }),
+        )
+
+        if (changed.size === 0) return
+
+        GlobalBus.emit("event", {
+          directory: ctx.directory,
+          project: ctx.project.id,
+          workspace,
+          payload: {
+            type: Event.Updated.type,
+            properties: { providerIDs: [...changed] },
+          },
+        })
+      })()
+
+      try {
+        yield* Effect.promise(() => s.refreshing!)
+      } finally {
+        s.refreshing = undefined
+      }
+    })
 
     async function resolveSDK(model: Model, s: State, envs: Record<string, string | undefined>) {
       try {
@@ -1721,7 +1891,7 @@ const layer: Layer.Layer<
       }
     })
 
-    return Service.of({ list, getProvider, getModel, getLanguage, closest, getSmallModel, defaultModel })
+    return Service.of({ list, refresh, getProvider, getModel, getLanguage, closest, getSmallModel, defaultModel })
   }),
 )
 
@@ -1763,5 +1933,69 @@ export const ModelNotFoundError = namedSchemaError("ProviderModelNotFoundError",
 export const InitError = namedSchemaError("ProviderInitError", {
   providerID: ProviderID,
 })
+
+function finalizeProvider(
+  providerID: ProviderID,
+  provider: Info,
+  configProvider: NonNullable<Config.Info["provider"]>[string] | undefined,
+) {
+  for (const [modelID, model] of Object.entries(provider.models)) {
+    model.api.id = model.api.id ?? model.id ?? modelID
+    if (
+      modelID === "gpt-5-chat-latest" ||
+      (providerID === ProviderID.openrouter && modelID === "openai/gpt-5-chat")
+    ) {
+      delete provider.models[modelID]
+      continue
+    }
+    if (model.status === "alpha" && !Flag.OPENCODE_ENABLE_EXPERIMENTAL_MODELS) {
+      delete provider.models[modelID]
+      continue
+    }
+    if (model.status === "deprecated") {
+      delete provider.models[modelID]
+      continue
+    }
+    if (
+      (configProvider?.blacklist && configProvider.blacklist.includes(modelID)) ||
+      (configProvider?.whitelist && !configProvider.whitelist.includes(modelID))
+    ) {
+      delete provider.models[modelID]
+      continue
+    }
+
+    model.variants = mapValues(ProviderTransform.variants(model), (v) => v)
+
+    const configVariants = configProvider?.models?.[modelID]?.variants
+    if (configVariants && model.variants) {
+      const merged = mergeDeep(model.variants, configVariants)
+      model.variants = mapValues(
+        pickBy(merged, (v) => !v.disabled),
+        (v) => omit(v, ["disabled"]),
+      )
+    }
+  }
+
+  return Object.keys(provider.models).length > 0
+}
+
+function finalizeProviders(
+  providers: Record<ProviderID, Info>,
+  cfg: Config.Info,
+  isProviderAllowed: (providerID: ProviderID) => boolean,
+) {
+  for (const [id, provider] of Object.entries(providers)) {
+    const providerID = ProviderID.make(id)
+    if (!isProviderAllowed(providerID)) {
+      delete providers[providerID]
+      continue
+    }
+    if (!finalizeProvider(providerID, provider, cfg.provider?.[providerID])) {
+      delete providers[providerID]
+      continue
+    }
+    log.info("found", { providerID })
+  }
+}
 
 export * as Provider from "./provider"
