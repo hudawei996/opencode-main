@@ -3,7 +3,6 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
-import { useMutation } from "@tanstack/solid-query"
 import { TextField } from "@opencode-ai/ui/text-field"
 import { showToast } from "@opencode-ai/ui/toast"
 import { batch, For } from "solid-js"
@@ -32,6 +31,7 @@ export function DialogCustomProvider(props: Props) {
     apiKey: "",
     models: [modelRow()],
     headers: [headerRow()],
+    saving: false,
     err: {},
   })
 
@@ -116,49 +116,48 @@ export function DialogCustomProvider(props: Props) {
     return output.result
   }
 
-  const saveMutation = useMutation(() => ({
-    mutationFn: async (result: NonNullable<ReturnType<typeof validate>>) => {
-      const disabledProviders = globalSync.data.config.disabled_providers ?? []
-      const nextDisabled = disabledProviders.filter((id) => id !== result.providerID)
+  const save = async (e: SubmitEvent) => {
+    e.preventDefault()
+    if (form.saving) return
 
-      if (result.key) {
-        await globalSDK.client.auth.set({
+    const result = validate()
+    if (!result) return
+
+    setForm("saving", true)
+
+    const disabledProviders = globalSync.data.config.disabled_providers ?? []
+    const nextDisabled = disabledProviders.filter((id) => id !== result.providerID)
+
+    const auth = result.key
+      ? globalSDK.client.auth.set({
           providerID: result.providerID,
           auth: {
             type: "api",
             key: result.key,
           },
         })
-      }
+      : Promise.resolve()
 
-      await globalSync.updateConfig({
-        provider: { [result.providerID]: result.config },
-        disabled_providers: nextDisabled,
+    auth
+      .then(() =>
+        globalSync.updateConfig({ provider: { [result.providerID]: result.config }, disabled_providers: nextDisabled }),
+      )
+      .then(() => {
+        dialog.close()
+        showToast({
+          variant: "success",
+          icon: "circle-check",
+          title: language.t("provider.connect.toast.connected.title", { provider: result.name }),
+          description: language.t("provider.connect.toast.connected.description", { provider: result.name }),
+        })
       })
-      return result
-    },
-    onSuccess: (result) => {
-      dialog.close()
-      showToast({
-        variant: "success",
-        icon: "circle-check",
-        title: language.t("provider.connect.toast.connected.title", { provider: result.name }),
-        description: language.t("provider.connect.toast.connected.description", { provider: result.name }),
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err)
+        showToast({ title: language.t("common.requestFailed"), description: message })
       })
-    },
-    onError: (err) => {
-      const message = err instanceof Error ? err.message : String(err)
-      showToast({ title: language.t("common.requestFailed"), description: message })
-    },
-  }))
-
-  const save = (e: SubmitEvent) => {
-    e.preventDefault()
-    if (saveMutation.isPending) return
-
-    const result = validate()
-    if (!result) return
-    saveMutation.mutate(result)
+      .finally(() => {
+        setForm("saving", false)
+      })
   }
 
   return (
@@ -313,14 +312,8 @@ export function DialogCustomProvider(props: Props) {
             </Button>
           </div>
 
-          <Button
-            class="w-auto self-start"
-            type="submit"
-            size="large"
-            variant="primary"
-            disabled={saveMutation.isPending}
-          >
-            {saveMutation.isPending ? language.t("common.saving") : language.t("common.submit")}
+          <Button class="w-auto self-start" type="submit" size="large" variant="primary" disabled={form.saving}>
+            {form.saving ? language.t("common.saving") : language.t("common.submit")}
           </Button>
         </form>
       </div>

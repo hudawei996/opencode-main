@@ -13,6 +13,8 @@ import { useSDK } from "@/context/sdk"
 import { useSettings } from "@/context/settings"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
+import { DialogFork } from "@/components/dialog-fork"
+import { PlatformProvider, usePlatform } from "@/context/platform"
 import { showToast } from "@opencode-ai/ui/toast"
 import { findLast } from "@opencode-ai/core/util/array"
 import { createSessionTabs } from "@/pages/session/helpers"
@@ -49,6 +51,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const terminal = useTerminal()
   const layout = useLayout()
   const navigate = useNavigate()
+  const platform = usePlatform()
   const { params, tabs, view } = useSessionLayout()
 
   const info = () => {
@@ -352,7 +355,11 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
 
   const fork = () => {
     void import("@/components/dialog-fork").then((x) => {
-      dialog.show(() => <x.DialogFork />)
+      dialog.show(() => (
+        <PlatformProvider value={platform}>
+          <x.DialogFork />
+        </PlatformProvider>
+      ))
     })
   }
 
