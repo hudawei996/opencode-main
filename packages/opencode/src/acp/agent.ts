@@ -202,6 +202,18 @@ export class Agent implements ACPAgent {
           .then(async () => {
             const directory = session.cwd
 
+            let diffContent: ToolCallContent | undefined
+            if (permission.permission === "edit") {
+              const metadata = permission.metadata || {}
+              const filepath = typeof metadata["filepath"] === "string" ? metadata["filepath"] : ""
+              const diff = typeof metadata["diff"] === "string" ? metadata["diff"] : ""
+              if (filepath && diff) {
+                const oldText = (await Filesystem.exists(filepath)) ? await Filesystem.readText(filepath) : ""
+                const newText = getNewContent(oldText, diff) ?? ""
+                diffContent = { type: "diff", path: filepath, oldText, newText }
+              }
+            }
+
             const res = await this.connection
               .requestPermission({
                 sessionId: permission.sessionID,
@@ -212,6 +224,7 @@ export class Agent implements ACPAgent {
                   rawInput: permission.metadata,
                   kind: toToolKind(permission.permission),
                   locations: toLocations(permission.permission, permission.metadata),
+                  ...(diffContent && { content: [diffContent] }),
                 },
                 options: this.permissionOptions,
               })
@@ -239,20 +252,12 @@ export class Agent implements ACPAgent {
               return
             }
 
-            if (res.outcome.optionId !== "reject" && permission.permission == "edit") {
-              const metadata = permission.metadata || {}
-              const filepath = typeof metadata["filepath"] === "string" ? metadata["filepath"] : ""
-              const diff = typeof metadata["diff"] === "string" ? metadata["diff"] : ""
-              const content = (await Filesystem.exists(filepath)) ? await Filesystem.readText(filepath) : ""
-              const newContent = getNewContent(content, diff)
-
-              if (newContent) {
-                void this.connection.writeTextFile({
-                  sessionId: session.id,
-                  path: filepath,
-                  content: newContent,
-                })
-              }
+            if (res.outcome.optionId !== "reject" && diffContent?.type == "diff" && diffContent.newText) {
+              void this.connection.writeTextFile({
+                sessionId: session.id,
+                path: diffContent.path,
+                content: diffContent.newText,
+              })
             }
 
             await this.sdk.permission.reply({
