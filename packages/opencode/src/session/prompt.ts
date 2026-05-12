@@ -1575,7 +1575,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             text: nextPrompt.text.join("\n"),
             files: nextPrompt.files,
             agents: nextPrompt.agents,
-            references: nextPrompt.references,
+
           },
         })
       }
